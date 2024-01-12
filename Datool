@@ -1,0 +1,128 @@
+import databutton as db
+import streamlit as st
+from tradingview_ta import TA_Handler, Interval
+from discord_webhook import DiscordWebhook, DiscordEmbed
+
+# Function to check if a symbol meets the defined conditions
+def is_potential_bullish(symbol_data):
+    # Conditions for Stochastic Oscillator
+    if ("Stoch.K" in symbol_data and "Stoch.D" in symbol_data
+            and symbol_data["Stoch.K"] > symbol_data["Stoch.D"]
+            and symbol_data["Stoch.K[1]"] <= symbol_data["Stoch.D[1]"]):
+        return True
+
+    # Conditions for RSI
+    if ("RSI" in symbol_data and "RSI[1]" in symbol_data
+            and symbol_data["RSI"] > symbol_data["RSI[1]"]):
+        return True
+
+    # Conditions for BBPower
+    if ("Rec.BBPower" in symbol_data and symbol_data["Rec.BBPower"] == 1):
+        return True
+
+    # Calculate spread using bid and ask prices
+    if ("BB.lower" in symbol_data and "BB.upper" in symbol_data):
+        bid_price = symbol_data["BB.lower"]
+        ask_price = symbol_data["BB.upper"]
+        average_price = (bid_price + ask_price) / 2
+        spread_threshold = 0.01  # 1% of average price
+
+        spread = ask_price - bid_price
+        if spread < (average_price * spread_threshold):
+            return True
+
+    # Add more conditions for other indicators if needed
+    return False
+
+# Function to retrieve potential bullish symbols based on analysis results
+def select_potential_bullish_symbols(analysis_results):
+    bullish_symbols = []
+    for symbol_data in analysis_results:
+        if is_potential_bullish(symbol_data):
+            bullish_symbols.append(symbol_data)
+    return bullish_symbols
+
+# Main function
+def main():
+    # Step 3: Get the user information
+    user = db.user.get()
+    name = user.name if user and user.name else "you"
+
+    # Step 4: Create the Streamlit interface
+    st.sidebar.markdown("""
+    <style>
+    .sidebar .sidebar-content {
+        background-image: linear-gradient(to bottom, #ff0000, #ff00ff);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.sidebar.title("Navigation")
+    st.sidebar.markdown("💡")
+    st.sidebar.markdown("🔍")
+    st.sidebar.markdown("📊")
+
+    st.title(f"SOUL BOX TOOL!")
+
+    # Step 5: Get the symbols from the "bnb-pairs-json" library in Databutton
+    symbols_json = db.storage.json.get("bnb-pairs-full-json")
+    symbols = list(symbols_json.values())
+
+    # List to store symbols with "STRONG_BUY" recommendation
+    buy_signals = []
+
+    for symbol in symbols:
+        try:
+            output = TA_Handler(symbol=symbol,
+                                screener='Crypto',
+                                exchange='Binance',
+                                interval=Interval.INTERVAL_1_HOUR)
+
+            # Step 6: Retrieve the analysis results
+            analysis = output.get_analysis()
+
+            # Check if the recommendation is "STRONG_BUY" >= 1 and SELL == 0
+            if analysis.summary["RECOMMENDATION"] in ["BUY", "STRONG_BUY"] and analysis.summary.get("BUY", 0) >= 15 and analysis.summary.get("SELL", 0) == 0:
+
+                # Check if the symbol meets the defined criteria
+                if is_potential_bullish(analysis.indicators):
+                    # Store the symbol in the list
+                    buy_signals.append(symbol)
+
+        except Exception as e:
+            pass  # Ignore errors for now
+
+    # Discord webhook setup
+    webhook_url = 'https://discordapp.com/api/webhooks/1138581753620074497/tbiRIAVqsxurA-PXZuKaQODonm6c23VAE-zH_nN4ckawABxMCsUxR2NjJPw3KzlsHy9p'
+
+    # Check if any symbols have a 'STRONG_BUY' recommendation
+    if len(buy_signals) == 0:
+        st.write("Echate un Baño y Vuelve.")
+    else:
+        st.write("Las Señales de la VAINA QUE TAL:")
+        
+        # Create a DiscordEmbed object for the response
+        embed = DiscordEmbed(title="1H SIGNALS", description="Here are the bullish signals 📈:", color=0xFF0000)
+        
+        # Set author
+        embed.set_author(name="XOUL", icon_url="https://cdn.jsdelivr.net/gh/YeiBlock/chatbox@main/assets/img/Xoul%20loGO-1.png")
+        
+        for symbol in buy_signals:
+            st.write(f"Symbol: {symbol}")
+            
+            # Add a field for each symbol to the DiscordEmbed object
+            embed.add_embed_field(name="🌕", value=symbol, inline=False)
+
+        # Set thumbnail
+        embed.set_thumbnail(url="https://cdn.jsdelivr.net/gh/YeiBlock/chatbox@main/assets/img/PicsArt_08-10-08.25.46.jpg")
+        
+        # Set footer
+        embed.set_footer(text="BETTER DAYS !!!")
+
+        # Send the Discord message with embedded content
+        webhook = DiscordWebhook(url=webhook_url)
+        webhook.add_embed(embed)  # Add the embed to the webhook
+        response = webhook.execute()
+
+if __name__ == "__main__":
+    main()
