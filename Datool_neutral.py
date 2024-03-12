@@ -1,4 +1,3 @@
-import databutton as db
 import streamlit as st
 from tradingview_ta import TA_Handler, Interval
 from discord_webhook import DiscordWebhook, DiscordEmbed
