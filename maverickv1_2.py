@@ -6,15 +6,18 @@ from tradingview_ta import TA_Handler, Interval, Exchange
 
 # Function to fetch data using TradingView TA Handler
 def fetch_all_data(symbol, exchange, screener, interval):
-    handler = TA_Handler(
-        symbol=symbol,
-        exchange=exchange,
-        screener=screener,
-        interval=interval,
-        timeout=None
-    )
-    analysis = handler.get_analysis()
-    return analysis
+    try:
+        handler = TA_Handler(
+            symbol=symbol,
+            exchange=exchange,
+            screener=screener,
+            interval=interval,
+            timeout=None
+        )
+        analysis = handler.get_analysis()
+        return analysis
+    except Exception as e:
+        return None
 
 # Function to save data to CSV
 def save_to_csv(data, filename='coin_analysis_data.csv'):
@@ -45,7 +48,7 @@ def save_to_csv(data, filename='coin_analysis_data.csv'):
             for key, value in indicators.items():
                 writer.writerow([symbol, interval, 'Indicators', key, value])
 
-# Function to calculate weighted recommendation score for BUY/SELL balance
+# Function to calculate balanced recommendation score for BUY/SELL balance
 def calculate_balanced_recommendation(data, timeframes):
     scores = {
         'BUY': 1,
@@ -66,7 +69,7 @@ def calculate_balanced_recommendation(data, timeframes):
         weight_sum += weight
 
     if weight_sum == 0:
-        return 0
+        return float('inf')
 
     average_buy = total_buy / weight_sum
     average_sell = total_sell / weight_sum
@@ -149,12 +152,9 @@ def main():
         data = {}
         for symbol in symbols:
             for interval in intervals:
-                try:
-                    analysis = fetch_all_data(symbol, exchange, screener, interval)
+                analysis = fetch_all_data(symbol, exchange, screener, interval)
+                if analysis:
                     data[(symbol, interval_str_map[interval])] = analysis
-                except Exception as e:
-                    st.error(f"Error fetching data for {symbol} at interval {interval_str_map[interval]}: {e}")
-                    data[(symbol, interval_str_map[interval])] = None
 
         if data:
             save_to_csv(data)
@@ -168,12 +168,18 @@ def main():
 
             average_scores = {symbol: calculate_balanced_recommendation({(s, i): data[(s, i)] for (s, i) in data if s == symbol}, timeframes) for symbol in symbols}
 
+            # Filter out symbols that don't have enough data
+            average_scores = {symbol: score for symbol, score in average_scores.items() if score != float('inf')}
+
             # Sort symbols by their balanced recommendation score
             sorted_scores = sorted(average_scores.items(), key=lambda item: item[1])
 
-            st.write("Coins with Balanced BUY/SELL Recommendations:")
-            for symbol, score in sorted_scores:
-                st.write(f"{symbol}: {score}")
+            if sorted_scores:
+                st.write("Coins with Balanced BUY/SELL Recommendations:")
+                for symbol, score in sorted_scores:
+                    st.write(f"{symbol}: {score}")
+            else:
+                st.write("Relájate y Peinate")
 
 if __name__ == "__main__":
     main()
