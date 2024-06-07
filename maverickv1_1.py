@@ -5,7 +5,7 @@ import numpy as np
 from scipy.stats import pearsonr
 from tradingview_ta import TA_Handler, Interval
 
-# Fetch data using TradingView TA Handler
+# Función para obtener todos los datos utilizando TradingView TA Handler
 def fetch_all_data(symbol, exchange, screener, interval):
     handler = TA_Handler(
         symbol=symbol,
@@ -17,7 +17,7 @@ def fetch_all_data(symbol, exchange, screener, interval):
     analysis = handler.get_analysis()
     return analysis
 
-# Save fetched data to a CSV file
+# Función para guardar los datos en un archivo CSV
 def save_to_csv(data, filename='coin_analysis_data.csv'):
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
@@ -46,7 +46,7 @@ def save_to_csv(data, filename='coin_analysis_data.csv'):
             for key, value in indicators.items():
                 writer.writerow([symbol, interval, 'Indicators', key, value])
 
-# Calculate weighted pivot points
+# Función para calcular pivotes ponderados
 def calculate_weighted_pivot(data, timeframes):
     pivot_columns = ['Pivot.M.Classic.Middle', 'Pivot.M.Fibonacci.Middle', 'Pivot.M.Camarilla.Middle', 'Pivot.M.Woodie.Middle', 'Pivot.M.Demark.Middle']
     pivot_data = {tf: [] for tf in timeframes}
@@ -54,7 +54,7 @@ def calculate_weighted_pivot(data, timeframes):
     for (symbol, interval), analysis in data.items():
         if analysis is None:
             continue
-        interval_str = interval.split('_')[1].lower()
+        interval_str = interval
         pivot_values = [analysis.indicators.get(pivot, 0) for pivot in pivot_columns]
         pivot_data[interval_str].append(np.mean(pivot_values))
 
@@ -72,7 +72,7 @@ def calculate_weighted_pivot(data, timeframes):
 
     return weighted_pivot
 
-# Set grid bot parameters
+# Función para ajustar los parámetros del bot de grid
 def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
     optimal_range = 2 * atr
     safety_range = optimal_range * (1 + safety_margin)
@@ -105,10 +105,10 @@ def main():
             for interval in intervals:
                 try:
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
-                    data[(symbol, interval)] = analysis
+                    data[(symbol, interval.value)] = analysis
                 except Exception as e:
                     st.error(f"Error fetching data for {symbol} at interval {interval}: {e}")
-                    data[(symbol, interval)] = None
+                    data[(symbol, interval.value)] = None
 
         if data:
             save_to_csv(data)
