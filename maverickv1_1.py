@@ -1,8 +1,6 @@
 import streamlit as st
 import csv
 import pandas as pd
-import numpy as np
-from scipy.stats import pearsonr
 from tradingview_ta import TA_Handler, Interval, Exchange
 
 # Function to fetch data using TradingView TA Handler
@@ -46,54 +44,88 @@ def save_to_csv(data, filename='coin_analysis_data.csv'):
             for key, value in indicators.items():
                 writer.writerow([symbol, interval, 'Indicators', key, value])
 
-# Function to calculate weighted pivot point
-def calculate_weighted_pivot(data, timeframes):
-    pivot_columns = [
-        'Pivot.M.Classic.Middle', 'Pivot.M.Fibonacci.Middle', 
-        'Pivot.M.Camarilla.Middle', 'Pivot.M.Woodie.Middle', 'Pivot.M.Demark.Middle'
-    ]
-    pivot_data = {tf: [] for tf in timeframes}
+# Function to calculate weighted recommendation score
+def calculate_weighted_recommendation(data, timeframes):
+    scores = {
+        'STRONG_BUY': 2,
+        'BUY': 1,
+        'NEUTRAL': 0,
+        'SELL': -1,
+        'STRONG_SELL': -2
+    }
+    
+    weights = {
+        '5m': 0.1,
+        '15m': 0.2,
+        '30m': 0.3,
+        '1h': 0.4,
+        '2h': 0.5,
+        '4h': 0.6,
+        '1d': 0.7
+    }
+
+    total_score = 0
+    total_weight = 0
 
     for (symbol, interval), analysis in data.items():
         if analysis is None:
             continue
-        pivot_values = [analysis.indicators.get(pivot, 0) for pivot in pivot_columns]
-        pivot_data[interval].append(np.mean(pivot_values))
+        
+        summary = analysis.summary
+        weighted_score = (
+            summary['BUY'] * scores['BUY'] +
+            summary['STRONG_BUY'] * scores['STRONG_BUY'] +
+            summary['NEUTRAL'] * scores['NEUTRAL'] +
+            summary['SELL'] * scores['SELL'] +
+            summary['STRONG_SELL'] * scores['STRONG_SELL']
+        ) * weights[interval]
+        
+        total_score += weighted_score
+        total_weight += weights[interval]
 
-    correlations = pd.DataFrame(index=timeframes, columns=timeframes)
-    for tf1 in timeframes:
-        for tf2 in timeframes:
-            if tf1 != tf2:
-                try:
-                    if len(pivot_data[tf1]) >= 2 and len(pivot_data[tf2]) >= 2:
-                        corr_values = pearsonr(pivot_data[tf1], pivot_data[tf2])[0]
-                        correlations.loc[tf1, tf2] = corr_values
-                    else:
-                        correlations.loc[tf1, tf2] = 0
-                except ValueError:
-                    correlations.loc[tf1, tf2] = 0
-            else:
-                correlations.loc[tf1, tf2] = 1.0
-
-    weights = correlations.mean(axis=1)
-    weighted_pivot = sum(weights[tf] * np.mean(pivot_data[tf]) for tf in timeframes if len(pivot_data[tf]) > 0) / sum(weights)
-
-    return weighted_pivot
-
-# Function to set grid bot parameters
-def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
-    optimal_range = 2 * atr
-    safety_range = optimal_range * (1 + safety_margin)
-    entry_point = weighted_pivot - (optimal_range / 2)
-    exit_point = weighted_pivot + (optimal_range / 2)
-    
-    return entry_point, exit_point, safety_range
+    average_score = total_score / total_weight if total_weight else 0
+    return average_score
 
 def main():
     st.title('Crypto Analysis with TradingView TA')
-    
-    user_input = st.text_input("Enter symbols separated by commas", "BTC,ETH,XRP")
-    symbols = [symbol.strip() for symbol in user_input.split(',')]
+
+    # List of symbols to analyze
+    symbols = [
+        "BTCUSDT", "ETHUSDT", "BTCUSDC", "USDCUSDT", "ETHUSDC", "SOLUSDT", 
+        "STETHUSDT", "PEPEUSDT", "DOGEUSDT", "USDEUSDT", "XRPUSDT", "ETHBTC", 
+        "MNTUSDT", "WBTCBTC", "TONUSDT", "LTCUSDT", "SOLUSDC", "WUSDT", 
+        "BNBUSDT", "LINKUSDT", "MATICUSDT", "APTUSDT", "USDEUSDC", "ADAUSDT", 
+        "APEXUSDT", "SHIBUSDT", "ONDOUSDT", "OPUSDT", "TRXUSDT", "NEARUSDT", 
+        "AVAXUSDT", "JUPUSDT", "ATOMUSDT", "PYTHUSDT", "LDOUSDT", "FTMUSDT", 
+        "BLURUSDT", "MONUSDT", "NOTUSDT", "RNDRUSDT", "EOSUSDT", "KASUSDT", 
+        "STRKUSDT", "DAIUSDT", "WLDUSDT", "INJUSDT", "FLOWUSDT", "FLOKIUSDT", 
+        "FETUSDT", "AAVEUSDT", "ETHFIUSDT", "SUIUSDT", "TIAUSDT", "ICPUSDT", 
+        "ENAUSDT", "FILUSDT", "USDCEUR", "ARUSDT", "BTCEUR", "STXUSDT", 
+        "HLGUSDT", "RUNEUSDT", "TAIKOUSDT", "BONKUSDT", "SANDUSDT", "ZETAUSDT", 
+        "XRPEUR", "DOTUSDT", "HBARUSDT", "WIFUSDT", "CAKEUSDT", "ENSUSDT", 
+        "GALAUSDT", "XRPUSDC", "APEUSDT", "ARBUSDT", "FLTUSDT", "JTOUSDT", 
+        "ORDIUSDT", "AGIXUSDT", "IDUSDT", "ALGOUSDT", "ETHEUR", "XLMUSDT", 
+        "BRETTUSDT", "ETCUSDT", "SEIUSDT", "PEOPLEUSDT", "CRVUSDT", "PYUSDUSDT", 
+        "UNIUSDT", "CYBERUSDT", "HNTUSDT", "ULTIUSDT", "ARKMUSDT", "LTCEUR", 
+        "CHZUSDT", "AEVOUSDT", "DEGENUSDT", "MASKUSDT", "WAVESUSDT", "DYDXUSDT", 
+        "XRPUSDC", "DOGEUSDC", "PORTALUSDT", "GALAUSDT", "MANAUSDT", "CRVUSDT", 
+        "ELIXUSDT", "ALTUSDT", "CTCUSDT", "SEIUSDT", "CYBERUSDT", "GMTUSDT", 
+        "IMXUSDT", "COREUSDT", "CAKEUSDT", "SOLBTC", "JASMYUSDT", "ROUTEUSDT", 
+        "GRTUSDT", "ADAEUR", "SOLOUSDT", "HNTUSDT", "TUSDUSDT", "ETHUSDE", 
+        "VENOMUSDT", "WOOUSDT", "NYANUSDT", "TWTUSDT", "LFTUSDT", "MATICUSDC", 
+        "LMWRUSDT", "LTCEUR", "OMNIUSDT", "SOLEUR", "ULTIUSDT", "PENDLEUSDT", 
+        "DYMUSDT", "MNTUSDC", "WBTCUSDT", "FOXYUSDT", "SNXUSDT", "TOKENUSDT", 
+        "BRETTUSDT", "MAGICUSDT", "BBUSDT", "MANTAUSDT", "CELOUSDT", "KARATEUSDT", 
+        "HFTUSDT", "TNSRUSDT", "FIREUSDT", "LUNAUSDT", "GMXUSDT", "SUIUSDC", 
+        "AVAXUSDC", "XDCUSDT", "EGLDUSDT", "MINAUSDT", "OPUSDC", "VANRYUSDT", 
+        "SOLUSDE", "SSVUSDT", "AXLUSDT", "RVNUSDT", "C98USDT", "BOBAUSDT", 
+        "KMNOUSDT", "KAVAUSDT", "INTXUSDT", "ZRXUSDT", "STGUSDT", "BEAMUSDT", 
+        "SEIUSDC", "MAVIAUSDT", "PRIMEUSDT", "VELARUSDT", "FLIPUSDT", "DOTUSDC", 
+        "ADAUSDC", "FLRUSDT", "ANKRUSDT", "XAIUSDT", "ZEROUSDT", "NUTSUSDT", 
+        "YFIUSDT", "PARAMUSDT", "SHRAPUSDT", "TRXUSDC", "LUNCUSDT", "ROSEUSDT", 
+        "SAFEUSDT", "MOVRUSDT", "AURYUSDT", "WENUSDT", "WLDUSDC", "ZILUSDT", 
+        "QTUMUSDT", "CHZUSDC"
+    ]
 
     exchange = "BYBIT"
     screener = "crypto"
@@ -117,7 +149,7 @@ def main():
         Interval.INTERVAL_1_DAY: '1d'
     }
 
-    if st.button("Fetch Data"):
+    if st.button("Run The Wheel"):
         data = {}
         for symbol in symbols:
             for interval in intervals:
@@ -139,18 +171,13 @@ def main():
             )
 
             timeframes = list(interval_str_map.values())
-            weighted_pivot = calculate_weighted_pivot(data, timeframes)
-            
-            # Directly use ATR values from TradingView TA data
-            atr_values = [analysis.indicators.get('ATR', 0) for analysis in data.values() if analysis]
-            atr_value = np.mean(atr_values) if atr_values else 0
+            average_scores = {symbol: calculate_weighted_recommendation({(s, i): data[(s, i)] for (s, i) in data if s == symbol}, timeframes) for symbol in symbols}
 
-            entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
+            neutral_recommendations = [symbol for symbol, score in average_scores.items() if -0.5 <= score <= 0.5]
 
-            st.write(f'Weighted Pivot Point: {weighted_pivot}')
-            st.write(f'Entry Point: {entry_point}')
-            st.write(f'Exit Point: {exit_point}')
-            st.write(f'Safety Range: {safety_range}')
+            st.write("Neutral Recommendations:")
+            for symbol in neutral_recommendations:
+                st.write(symbol)
 
 if __name__ == "__main__":
     main()
