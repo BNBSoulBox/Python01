@@ -3,8 +3,7 @@ import csv
 import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr
-from tradingview_ta import TA_Handler, Interval
-import ta  # Technical Analysis library for ATR calculation
+from tradingview_ta import TA_Handler, Interval, Exchange
 
 # Function to fetch data using TradingView TA Handler
 def fetch_all_data(symbol, exchange, screener, interval):
@@ -49,15 +48,17 @@ def save_to_csv(data, filename='coin_analysis_data.csv'):
 
 # Function to calculate weighted pivot point
 def calculate_weighted_pivot(data, timeframes):
-    pivot_columns = ['Pivot.M.Classic.Middle', 'Pivot.M.Fibonacci.Middle', 'Pivot.M.Camarilla.Middle', 'Pivot.M.Woodie.Middle', 'Pivot.M.Demark.Middle']
+    pivot_columns = [
+        'Pivot.M.Classic.Middle', 'Pivot.M.Fibonacci.Middle', 
+        'Pivot.M.Camarilla.Middle', 'Pivot.M.Woodie.Middle', 'Pivot.M.Demark.Middle'
+    ]
     pivot_data = {tf: [] for tf in timeframes}
 
     for (symbol, interval), analysis in data.items():
         if analysis is None:
             continue
-        interval_str = interval
         pivot_values = [analysis.indicators.get(pivot, 0) for pivot in pivot_columns]
-        pivot_data[interval_str].append(np.mean(pivot_values))
+        pivot_data[interval].append(np.mean(pivot_values))
 
     correlations = pd.DataFrame(index=timeframes, columns=timeframes)
     for tf1 in timeframes:
@@ -70,7 +71,7 @@ def calculate_weighted_pivot(data, timeframes):
                     else:
                         correlations.loc[tf1, tf2] = 0
                 except ValueError:
-                    correlations.loc[tf1, tf2] = 0  # Set correlation to 0 if not enough data
+                    correlations.loc[tf1, tf2] = 0
             else:
                 correlations.loc[tf1, tf2] = 1.0
 
@@ -87,32 +88,6 @@ def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
     exit_point = weighted_pivot + (optimal_range / 2)
     
     return entry_point, exit_point, safety_range
-
-# Function to calculate ATR using the fetched data
-def calculate_atr(data):
-    high_prices = []
-    low_prices = []
-    close_prices = []
-
-    for (_, interval), analysis in data.items():
-        if analysis is None:
-            continue
-        indicators = analysis.indicators
-        high_prices.append(indicators.get('high', 0))
-        low_prices.append(indicators.get('low', 0))
-        close_prices.append(indicators.get('close', 0))
-
-    df = pd.DataFrame({
-        'high': high_prices,
-        'low': low_prices,
-        'close': close_prices
-    })
-
-    if len(df) < 14:
-        return 0
-
-    atr = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14)
-    return atr.average_true_range()[-1]
 
 def main():
     st.title('Crypto Analysis with TradingView TA')
@@ -165,7 +140,11 @@ def main():
 
             timeframes = list(interval_str_map.values())
             weighted_pivot = calculate_weighted_pivot(data, timeframes)
-            atr_value = calculate_atr(data)  # Calculate ATR based on the fetched data
+            
+            # Directly use ATR values from TradingView TA data
+            atr_values = [analysis.indicators.get('ATR', 0) for analysis in data.values() if analysis]
+            atr_value = np.mean(atr_values) if atr_values else 0
+
             entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
 
             st.write(f'Weighted Pivot Point: {weighted_pivot}')
