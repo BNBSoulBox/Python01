@@ -73,11 +73,11 @@ def calculate_weighted_recommendation(data, timeframes):
         
         summary = analysis.summary
         weighted_score = (
-            summary['BUY'] * scores['BUY'] +
-            summary['STRONG_BUY'] * scores['STRONG_BUY'] +
-            summary['NEUTRAL'] * scores['NEUTRAL'] +
-            summary['SELL'] * scores['SELL'] +
-            summary['STRONG_SELL'] * scores['STRONG_SELL']
+            summary.get('BUY', 0) * scores['BUY'] +
+            summary.get('STRONG_BUY', 0) * scores['STRONG_BUY'] +
+            summary.get('NEUTRAL', 0) * scores['NEUTRAL'] +
+            summary.get('SELL', 0) * scores['SELL'] +
+            summary.get('STRONG_SELL', 0) * scores['STRONG_SELL']
         ) * weights[interval]
         
         total_score += weighted_score
