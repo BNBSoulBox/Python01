@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr
 from tradingview_ta import TA_Handler, Interval
+import ta  # Technical Analysis library for ATR calculation
 
 # Function to fetch data using TradingView TA Handler
 def fetch_all_data(symbol, exchange, screener, interval):
@@ -87,6 +88,32 @@ def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
     
     return entry_point, exit_point, safety_range
 
+# Function to calculate ATR using the fetched data
+def calculate_atr(data):
+    high_prices = []
+    low_prices = []
+    close_prices = []
+
+    for (_, interval), analysis in data.items():
+        if analysis is None:
+            continue
+        indicators = analysis.indicators
+        high_prices.append(indicators.get('high', 0))
+        low_prices.append(indicators.get('low', 0))
+        close_prices.append(indicators.get('close', 0))
+
+    df = pd.DataFrame({
+        'high': high_prices,
+        'low': low_prices,
+        'close': close_prices
+    })
+
+    if len(df) < 14:
+        return 0
+
+    atr = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14)
+    return atr.average_true_range()[-1]
+
 def main():
     st.title('Crypto Analysis with TradingView TA')
     
@@ -138,7 +165,7 @@ def main():
 
             timeframes = list(interval_str_map.values())
             weighted_pivot = calculate_weighted_pivot(data, timeframes)
-            atr_value = 0.002  # Example ATR value, should be calculated based on real data
+            atr_value = calculate_atr(data)  # Calculate ATR based on the fetched data
             entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
 
             st.write(f'Weighted Pivot Point: {weighted_pivot}')
