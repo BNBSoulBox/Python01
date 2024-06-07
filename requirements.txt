@@ -1,3 +1,4 @@
 tradingview_ta
 discord-webhook
 scipy
+ta
