@@ -99,16 +99,26 @@ def main():
         Interval.INTERVAL_1_DAY
     ]
 
+    interval_str_map = {
+        Interval.INTERVAL_5_MINUTES: '5m',
+        Interval.INTERVAL_15_MINUTES: '15m',
+        Interval.INTERVAL_30_MINUTES: '30m',
+        Interval.INTERVAL_1_HOUR: '1h',
+        Interval.INTERVAL_2_HOURS: '2h',
+        Interval.INTERVAL_4_HOURS: '4h',
+        Interval.INTERVAL_1_DAY: '1d'
+    }
+
     if st.button("Fetch Data"):
         data = {}
         for symbol in symbols:
             for interval in intervals:
                 try:
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
-                    data[(symbol, interval.value)] = analysis
+                    data[(symbol, interval_str_map[interval])] = analysis
                 except Exception as e:
-                    st.error(f"Error fetching data for {symbol} at interval {interval}: {e}")
-                    data[(symbol, interval.value)] = None
+                    st.error(f"Error fetching data for {symbol} at interval {interval_str_map[interval]}: {e}")
+                    data[(symbol, interval_str_map[interval])] = None
 
         if data:
             save_to_csv(data)
@@ -120,7 +130,7 @@ def main():
                 mime='text/csv'
             )
 
-            timeframes = ['5m', '15m', '30m', '1h', '2h', '4h', '1d']
+            timeframes = list(interval_str_map.values())
             weighted_pivot = calculate_weighted_pivot(data, timeframes)
             atr_value = 0.002  # Ejemplo de valor ATR, debe calcularse en base a los datos reales
             entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
