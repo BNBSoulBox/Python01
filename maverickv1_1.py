@@ -62,13 +62,16 @@ def calculate_weighted_pivot(data, timeframes):
     for tf1 in timeframes:
         for tf2 in timeframes:
             if tf1 != tf2:
-                corr_values = [pearsonr(pivot_data[tf1], pivot_data[tf2])[0] for pivot in pivot_columns]
-                correlations.loc[tf1, tf2] = np.mean(corr_values)
+                try:
+                    corr_values = pearsonr(pivot_data[tf1], pivot_data[tf2])[0]
+                    correlations.loc[tf1, tf2] = corr_values
+                except ValueError:
+                    correlations.loc[tf1, tf2] = 0  # Establece la correlación en 0 si no hay suficientes datos
             else:
                 correlations.loc[tf1, tf2] = 1.0
 
     weights = correlations.mean(axis=1)
-    weighted_pivot = sum(weights[tf] * np.mean(pivot_data[tf]) for tf in timeframes) / sum(weights)
+    weighted_pivot = sum(weights[tf] * np.mean(pivot_data[tf]) for tf in timeframes if len(pivot_data[tf]) > 0) / sum(weights)
 
     return weighted_pivot
 
