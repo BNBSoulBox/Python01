@@ -5,7 +5,7 @@ import numpy as np
 from scipy.stats import pearsonr
 from tradingview_ta import TA_Handler, Interval
 
-# Function to fetch data using TradingView TA Handler
+# Función para obtener todos los datos utilizando TradingView TA Handler
 def fetch_all_data(symbol, exchange, screener, interval):
     handler = TA_Handler(
         symbol=symbol,
@@ -17,7 +17,7 @@ def fetch_all_data(symbol, exchange, screener, interval):
     analysis = handler.get_analysis()
     return analysis
 
-# Function to save data to CSV
+# Función para guardar los datos en un archivo CSV
 def save_to_csv(data, filename='coin_analysis_data.csv'):
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
@@ -46,7 +46,7 @@ def save_to_csv(data, filename='coin_analysis_data.csv'):
             for key, value in indicators.items():
                 writer.writerow([symbol, interval, 'Indicators', key, value])
 
-# Function to calculate weighted pivot point
+# Función para calcular pivotes ponderados
 def calculate_weighted_pivot(data, timeframes):
     pivot_columns = ['Pivot.M.Classic.Middle', 'Pivot.M.Fibonacci.Middle', 'Pivot.M.Camarilla.Middle', 'Pivot.M.Woodie.Middle', 'Pivot.M.Demark.Middle']
     pivot_data = {tf: [] for tf in timeframes}
@@ -63,13 +63,10 @@ def calculate_weighted_pivot(data, timeframes):
         for tf2 in timeframes:
             if tf1 != tf2:
                 try:
-                    if len(pivot_data[tf1]) >= 2 and len(pivot_data[tf2]) >= 2:
-                        corr_values = pearsonr(pivot_data[tf1], pivot_data[tf2])[0]
-                        correlations.loc[tf1, tf2] = corr_values
-                    else:
-                        correlations.loc[tf1, tf2] = 0
+                    corr_values = pearsonr(pivot_data[tf1], pivot_data[tf2])[0]
+                    correlations.loc[tf1, tf2] = corr_values
                 except ValueError:
-                    correlations.loc[tf1, tf2] = 0  # Set correlation to 0 if not enough data
+                    correlations.loc[tf1, tf2] = 0  # Establece la correlación en 0 si no hay suficientes datos
             else:
                 correlations.loc[tf1, tf2] = 1.0
 
@@ -78,7 +75,7 @@ def calculate_weighted_pivot(data, timeframes):
 
     return weighted_pivot
 
-# Function to set grid bot parameters
+# Función para ajustar los parámetros del bot de grid
 def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
     optimal_range = 2 * atr
     safety_range = optimal_range * (1 + safety_margin)
@@ -138,7 +135,7 @@ def main():
 
             timeframes = list(interval_str_map.values())
             weighted_pivot = calculate_weighted_pivot(data, timeframes)
-            atr_value = 0.002  # Example ATR value, should be calculated based on real data
+            atr_value = 0.002  # Ejemplo de valor ATR, debe calcularse en base a los datos reales
             entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
 
             st.write(f'Weighted Pivot Point: {weighted_pivot}')
