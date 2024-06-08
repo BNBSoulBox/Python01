@@ -5,7 +5,7 @@ import numpy as np
 from scipy.stats import pearsonr
 from tradingview_ta import TA_Handler, Interval
 
-# Función para obtener todos los datos utilizando TradingView TA Handler
+# Function to fetch data using TradingView TA Handler
 def fetch_all_data(symbol, exchange, screener, interval):
     handler = TA_Handler(
         symbol=symbol,
@@ -17,7 +17,7 @@ def fetch_all_data(symbol, exchange, screener, interval):
     analysis = handler.get_analysis()
     return analysis
 
-# Función para guardar los datos en un archivo CSV
+# Function to save data to a CSV file
 def save_to_csv(data, filename='coin_analysis_data.csv'):
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
@@ -46,7 +46,7 @@ def save_to_csv(data, filename='coin_analysis_data.csv'):
             for key, value in indicators.items():
                 writer.writerow([symbol, interval, 'Indicators', key, value])
 
-# Función para calcular pivotes ponderados
+# Function to calculate weighted pivot points
 def calculate_weighted_pivot(data, timeframes):
     pivot_columns = ['Pivot.M.Classic.Middle', 'Pivot.M.Fibonacci.Middle', 'Pivot.M.Camarilla.Middle', 'Pivot.M.Woodie.Middle', 'Pivot.M.Demark.Middle']
     pivot_data = {tf: [] for tf in timeframes}
@@ -66,7 +66,7 @@ def calculate_weighted_pivot(data, timeframes):
                     corr_values = pearsonr(pivot_data[tf1], pivot_data[tf2])[0]
                     correlations.loc[tf1, tf2] = corr_values
                 except ValueError:
-                    correlations.loc[tf1, tf2] = 0  # Establece la correlación en 0 si no hay suficientes datos
+                    correlations.loc[tf1, tf2] = 0
             else:
                 correlations.loc[tf1, tf2] = 1.0
 
@@ -75,7 +75,7 @@ def calculate_weighted_pivot(data, timeframes):
 
     return weighted_pivot
 
-# Función para ajustar los parámetros del bot de grid
+# Function to set grid bot parameters
 def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
     optimal_range = 2 * atr
     safety_range = optimal_range * (1 + safety_margin)
@@ -114,13 +114,14 @@ def main():
 
     if st.button("Fetch Data"):
         data = {}
+        errors = []
         for symbol in symbols:
             for interval in intervals:
                 try:
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
                     data[(symbol, interval_str_map[interval])] = analysis
                 except Exception as e:
-                    st.error(f"Error fetching data for {symbol} at interval {interval_str_map[interval]}: {e}")
+                    errors.append(f"{symbol} at interval {interval_str_map[interval]}: {str(e)}")
                     data[(symbol, interval_str_map[interval])] = None
 
         if data:
@@ -135,13 +136,16 @@ def main():
 
             timeframes = list(interval_str_map.values())
             weighted_pivot = calculate_weighted_pivot(data, timeframes)
-            atr_value = 0.002  # Ejemplo de valor ATR, debe calcularse en base a los datos reales
+            atr_value = 0.002  # Example ATR value, should be calculated based on real data
             entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
 
             st.write(f'Weighted Pivot Point: {weighted_pivot}')
             st.write(f'Entry Point: {entry_point}')
             st.write(f'Exit Point: {exit_point}')
             st.write(f'Safety Range: {safety_range}')
+
+        if errors:
+            st.warning(f"Some data could not be fetched. Errors occurred for the following symbol(s) and interval(s): {', '.join(errors)}")
 
 if __name__ == "__main__":
     main()
