@@ -157,23 +157,11 @@ def main():
     exchange = "BYBIT"
     screener = "crypto"
     intervals = [
-        Interval.INTERVAL_5_MINUTES,
-        Interval.INTERVAL_15_MINUTES,
-        Interval.INTERVAL_30_MINUTES,
-        Interval.INTERVAL_1_HOUR,
-        Interval.INTERVAL_2_HOURS,
-        Interval.INTERVAL_4_HOURS,
-        Interval.INTERVAL_1_DAY
+        Interval.INTERVAL_30_MINUTES  # Only fetching data for the 30-minute interval
     ]
 
     interval_str_map = {
-        Interval.INTERVAL_5_MINUTES: '5m',
-        Interval.INTERVAL_15_MINUTES: '15m',
-        Interval.INTERVAL_30_MINUTES: '30m',
-        Interval.INTERVAL_1_HOUR: '1h',
-        Interval.INTERVAL_2_HOURS: '2h',
-        Interval.INTERVAL_4_HOURS: '4h',
-        Interval.INTERVAL_1_DAY: '1d'
+        Interval.INTERVAL_30_MINUTES: '30m'
     }
 
     if st.button("Fetch Data"):
@@ -210,15 +198,17 @@ def main():
 
             for (symbol, interval), analysis in data.items():
                 if analysis:
-                    current_price = analysis.indicators.get('close', 0)
-                    lower_bound = current_price * 0.999
-                    upper_bound = current_price * 1.001
-                    if lower_bound <= weighted_pivot <= upper_bound:
-                        matches.append({
-                            "Symbol": symbol,
-                            "Weighted Pivot Point": weighted_pivot,
-                            "Current Price": current_price
-                        })
+                    # Fetch the current price from the 'close' indicator
+                    current_price = analysis.indicators.get('close', None)
+                    if current_price is not None:
+                        lower_bound = current_price * 0.999
+                        upper_bound = current_price * 1.001
+                        if lower_bound <= weighted_pivot <= upper_bound:
+                            matches.append({
+                                "Symbol": symbol,
+                                "Weighted Pivot Point": weighted_pivot,
+                                "Current Price": current_price
+                            })
 
             if matches:
                 df = pd.DataFrame(matches)
