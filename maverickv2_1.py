@@ -96,24 +96,28 @@ def save_to_csv(data, filename='coin_analysis_data.csv'):
             for key, value in indicators.items():
                 writer.writerow([symbol, interval, 'Indicators', key, value])
 
-# Function to calculate weighted pivot points
-def calculate_weighted_pivot(data, timeframes):
-    pivot_columns = ['Pivot.M.Classic.Middle', 'Pivot.M.Fibonacci.Middle', 'Pivot.M.Camarilla.Middle', 'Pivot.M.Woodie.Middle', 'Pivot.M.Demark.Middle']
-    pivot_data = {tf: [] for tf in timeframes}
+# Function to calculate weighted Bollinger Bands media
+def calculate_weighted_bb_media(data, timeframes):
+    bb_lower_columns = 'BB.lower'
+    bb_upper_columns = 'BB.upper'
+    bb_data = {tf: [] for tf in timeframes}
 
     for (symbol, interval), analysis in data.items():
         if analysis is None:
             continue
         interval_str = interval
-        pivot_values = [analysis.indicators.get(pivot, 0) for pivot in pivot_columns]
-        pivot_data[interval_str].append(np.mean(pivot_values))
+        bb_lower = analysis.indicators.get(bb_lower_columns, 0)
+        bb_upper = analysis.indicators.get(bb_upper_columns, 0)
+        if bb_lower and bb_upper:
+            bb_media = (bb_lower + bb_upper) / 2
+            bb_data[interval_str].append(bb_media)
 
     correlations = pd.DataFrame(index=timeframes, columns=timeframes)
     for tf1 in timeframes:
         for tf2 in timeframes:
             if tf1 != tf2:
                 try:
-                    corr_values = pearsonr(pivot_data[tf1], pivot_data[tf2])[0]
+                    corr_values = pearsonr(bb_data[tf1], bb_data[tf2])[0]
                     correlations.loc[tf1, tf2] = corr_values
                 except ValueError:
                     correlations.loc[tf1, tf2] = 0
@@ -121,35 +125,9 @@ def calculate_weighted_pivot(data, timeframes):
                 correlations.loc[tf1, tf2] = 1.0
 
     weights = correlations.mean(axis=1)
-    weighted_pivot = sum(weights[tf] * np.mean(pivot_data[tf]) for tf in timeframes if len(pivot_data[tf]) > 0) / sum(weights)
+    weighted_bb_media = sum(weights[tf] * np.mean(bb_data[tf]) for tf in timeframes if len(bb_data[tf]) > 0) / sum(weights)
 
-    return weighted_pivot
-
-# Function to calculate ATR based on extracted data
-def calculate_atr(data, intervals):
-    atr_values = []
-    for (symbol, interval), analysis in data.items():
-        if analysis is None:
-            continue
-        high_prices = analysis.indicators.get('High', [])
-        low_prices = analysis.indicators.get('Low', [])
-        close_prices = analysis.indicators.get('Close', [])
-        if len(high_prices) > 1 and len(low_prices) > 1 and len(close_prices) > 1:
-            tr = np.max([np.array(high_prices) - np.array(low_prices),
-                         np.abs(np.array(high_prices) - np.array(close_prices[:-1])),
-                         np.abs(np.array(low_prices) - np.array(close_prices[:-1]))], axis=0)
-            atr = np.mean(tr)
-            atr_values.append(atr)
-    return np.mean(atr_values) if atr_values else 0
-
-# Function to set grid bot parameters
-def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
-    optimal_range = 2 * atr
-    safety_range = optimal_range * (1 + safety_margin)
-    entry_point = weighted_pivot - (optimal_range / 2)
-    exit_point = weighted_pivot + (optimal_range / 2)
-    
-    return entry_point, exit_point, safety_range
+    return weighted_bb_media
 
 def main():
     st.title('MAVERICK Hedge Symbols')
@@ -183,7 +161,7 @@ def main():
                 try:
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
                     data[(symbol, interval_str_map[interval])] = analysis
-                except Exception:
+                except Exception as e:
                     data[(symbol, interval_str_map[interval])] = None
 
         if data:
@@ -197,32 +175,27 @@ def main():
             )
 
             timeframes = list(interval_str_map.values())
-            weighted_pivot = calculate_weighted_pivot(data, timeframes)
-            atr_value = 0.002  # Example ATR value, should be calculated based on real data
-            entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
+            weighted_bb_media = calculate_weighted_bb_media(data, timeframes)
 
-            st.write(f'Weighted Pivot Point: {weighted_pivot}')
-            st.write(f'Entry Point: {entry_point}')
-            st.write(f'Exit Point: {exit_point}')
-            st.write(f'Safety Range: {safety_range}')
+            st.write(f'Weighted Bollinger Bands Media: {weighted_bb_media}')
 
             matches = []
 
             for (symbol, interval), analysis in data.items():
                 if analysis:
                     current_price = analysis.indicators.get('close', 0)
-                    lower_bound = current_price * 0.9975
-                    upper_bound = current_price * 1.0025
-                    if lower_bound <= weighted_pivot <= upper_bound:
+                    lower_bound = weighted_bb_media * 0.995
+                    upper_bound = weighted_bb_media * 1.005
+                    if lower_bound <= current_price <= upper_bound:
                         matches.append({
                             "Symbol": symbol,
-                            "Weighted Pivot Point": weighted_pivot,
+                            "Weighted Bollinger Bands Media": weighted_bb_media,
                             "Current Price": current_price
                         })
 
             if matches:
                 df = pd.DataFrame(matches)
-                st.write("Symbols with Weighted Pivot Point within 0.1% range of the current price:")
+                st.write("Symbols with Current Price within 0.5% range of the Weighted Bollinger Bands Media:")
                 st.table(df)
             else:
                 st.write("No Matches")
