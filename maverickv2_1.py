@@ -98,16 +98,16 @@ def save_to_csv(data, filename='coin_analysis_data.csv'):
 
 # Function to calculate weighted Bollinger Bands media
 def calculate_weighted_bb_media(data, timeframes):
-    bb_lower_columns = 'BB.lower'
-    bb_upper_columns = 'BB.upper'
+    bb_lower_column = 'BB.lower'
+    bb_upper_column = 'BB.upper'
     bb_data = {tf: [] for tf in timeframes}
 
     for (symbol, interval), analysis in data.items():
         if analysis is None:
             continue
         interval_str = interval
-        bb_lower = analysis.indicators.get(bb_lower_columns, 0)
-        bb_upper = analysis.indicators.get(bb_upper_columns, 0)
+        bb_lower = analysis.indicators.get(bb_lower_column, 0)
+        bb_upper = analysis.indicators.get(bb_upper_column, 0)
         if bb_lower and bb_upper:
             bb_media = (bb_lower + bb_upper) / 2
             bb_data[interval_str].append(bb_media)
