@@ -203,23 +203,25 @@ def main():
             atr_value = calculate_atr(data, intervals)  # Calculate ATR based on the actual data
             entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
 
-            st.write(f'Weighted Pivot Point: {weighted_pivot}')
-            st.write(f'Entry Point: {entry_point}')
-            st.write(f'Exit Point: {exit_point}')
-            st.write(f'Safety Range: {safety_range}')
+            matches = []
 
-            # Check if the Weighted Pivot Point is within 0.1% range of the current price
             for (symbol, interval), analysis in data.items():
                 if analysis:
                     current_price = analysis.indicators.get('close', 0)
                     lower_bound = current_price * 0.999
                     upper_bound = current_price * 1.001
                     if lower_bound <= weighted_pivot <= upper_bound:
-                        st.write(f'{symbol} Weighted Pivot Point is within 0.1% range of the current price')
-                        st.write(f'Weighted Pivot Point for {symbol}: {weighted_pivot}')
+                        matches.append(symbol)
+
+            if matches:
+                st.write("Symbols with Weighted Pivot Point within 0.1% range of the current price:")
+                for match in matches:
+                    st.write(match)
+            else:
+                st.write("No Matches")
         
-        if errors:
-            st.warning(f"Some data could not be fetched. Errors occurred for the following symbol(s) and interval(s): {', '.join(errors)}")
+        else:
+            st.warning("No data could be fetched for any symbol.")
 
 if __name__ == "__main__":
     main()
