@@ -184,18 +184,18 @@ def main():
             for (symbol, interval), analysis in data.items():
                 if analysis:
                     current_price = analysis.indicators.get('close', 0)
-                    lower_bound = weighted_bb_media * 0.995
-                    upper_bound = weighted_bb_media * 1.005
+                    lower_bound = weighted_bb_media * 0.99
+                    upper_bound = weighted_bb_media * 1.01
                     if lower_bound <= current_price <= upper_bound:
                         matches.append({
                             "Symbol": symbol,
-                            "Weighted Bollinger Bands Media": weighted_bb_media,
-                            "Current Price": current_price
+                            "Current Price": current_price,
+                            "Weighted BB Media": weighted_bb_media,
                         })
 
             if matches:
                 df = pd.DataFrame(matches)
-                st.write("Symbols with Current Price within 0.5% range of the Weighted Bollinger Bands Media:")
+                st.write("Symbols with Current Price within 1% range of the Weighted Bollinger Bands Media:")
                 st.table(df)
             else:
                 st.write("No Matches")
