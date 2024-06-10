@@ -178,14 +178,12 @@ def main():
 
     if st.button("Fetch Data"):
         data = {}
-        errors = []
         for symbol in symbols:
             for interval in intervals:
                 try:
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
                     data[(symbol, interval_str_map[interval])] = analysis
-                except Exception as e:
-                    errors.append(f"{symbol} at interval {interval_str_map[interval]}: {str(e)}")
+                except Exception:
                     data[(symbol, interval_str_map[interval])] = None
 
         if data:
@@ -216,15 +214,18 @@ def main():
                     lower_bound = current_price * 0.999
                     upper_bound = current_price * 1.001
                     if lower_bound <= weighted_pivot <= upper_bound:
-                        matches.append(symbol)
+                        matches.append({
+                            "Symbol": symbol,
+                            "Weighted Pivot Point": weighted_pivot,
+                            "Current Price": current_price
+                        })
 
             if matches:
+                df = pd.DataFrame(matches)
                 st.write("Symbols with Weighted Pivot Point within 0.1% range of the current price:")
-                for match in matches:
-                    st.write(match)
+                st.table(df)
             else:
                 st.write("No Matches")
-        
         else:
             st.warning("No data could be fetched for any symbol.")
 
