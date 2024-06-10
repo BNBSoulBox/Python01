@@ -192,8 +192,8 @@ def main():
                     # Fetch the current price from the 'close' indicator at the 30m interval
                     if (symbol, '30m') in data and data[(symbol, '30m')] is not None:
                         current_price = data[(symbol, '30m')].indicators.get('close', 0)
-                        lower_bound = weighted_bb_media * 0.98
-                        upper_bound = weighted_bb_media * 1.02
+                        lower_bound = weighted_bb_media * 0.99
+                        upper_bound = weighted_bb_media * 1.01
                         if lower_bound <= current_price <= upper_bound:
                             matches.append({
                                 "Symbol": symbol,
