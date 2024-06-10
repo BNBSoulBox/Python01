@@ -1,5 +1,4 @@
 import streamlit as st
-import csv
 import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr
@@ -174,28 +173,32 @@ def main():
                 mime='text/csv'
             )
 
-            timeframes = list(interval_str_map.values())
-            weighted_bb_media = calculate_weighted_bb_media(data, timeframes)
-
-            st.write(f'Weighted Bollinger Bands Media: {weighted_bb_media}')
+            weighted_bb_media_dict = {}
+            for symbol in symbols:
+                timeframes = list(interval_str_map.values())
+                weighted_bb_media = calculate_weighted_bb_media({k: v for k, v in data.items() if k[0] == symbol}, timeframes)
+                weighted_bb_media_dict[symbol] = weighted_bb_media
 
             matches = []
 
-            for (symbol, interval), analysis in data.items():
-                if analysis:
-                    current_price = analysis.indicators.get('close', 0)
-                    lower_bound = weighted_bb_media * 0.99
-                    upper_bound = weighted_bb_media * 1.01
+            for symbol, weighted_bb_media in weighted_bb_media_dict.items():
+                if weighted_bb_media is not None:
+                    # Fetch the current price from the 'close' indicator at the 30m interval
+                    current_price = data[(symbol, '30m')].indicators.get('close', 0)
+                    lower_bound = weighted_bb_media * 0.98
+                    upper_bound = weighted_bb_media * 1.02
                     if lower_bound <= current_price <= upper_bound:
                         matches.append({
                             "Symbol": symbol,
                             "Current Price": current_price,
                             "Weighted BB Media": weighted_bb_media,
+                            "Lower Bound": lower_bound,
+                            "Upper Bound": upper_bound
                         })
 
             if matches:
                 df = pd.DataFrame(matches)
-                st.write("Symbols with Current Price within 1% range of the Weighted Bollinger Bands Media:")
+                st.write("Symbols with Current Price within 2% range of the Weighted Bollinger Bands Media:")
                 st.table(df)
             else:
                 st.write("No Matches")
