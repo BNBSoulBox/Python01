@@ -1,4 +1,5 @@
 import streamlit as st
+import csv
 import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr
@@ -68,32 +69,35 @@ def fetch_all_data(symbol, exchange, screener, interval):
 
 # Function to save data to a CSV file
 def save_to_csv(data, filename='coin_analysis_data.csv'):
-    with open(filename, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Symbol', 'Interval', 'Category', 'Indicator', 'Value'])
-        for (symbol, interval), analysis in data.items():
-            if analysis is None:
-                continue
-            summary = analysis.summary
-            oscillators = analysis.oscillators
-            moving_averages = analysis.moving_averages
-            indicators = analysis.indicators
+    try:
+        with open(filename, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['Symbol', 'Interval', 'Category', 'Indicator', 'Value'])
+            for (symbol, interval), analysis in data.items():
+                if analysis is None:
+                    continue
+                summary = analysis.summary
+                oscillators = analysis.oscillators
+                moving_averages = analysis.moving_averages
+                indicators = analysis.indicators
 
-            writer.writerow([symbol, interval, 'Summary', 'RECOMMENDATION', summary['RECOMMENDATION']])
-            writer.writerow([symbol, interval, 'Summary', 'BUY', summary['BUY']])
-            writer.writerow([symbol, interval, 'Summary', 'SELL', summary['SELL']])
-            writer.writerow([symbol, interval, 'Summary', 'NEUTRAL', summary['NEUTRAL']])
+                writer.writerow([symbol, interval, 'Summary', 'RECOMMENDATION', summary['RECOMMENDATION']])
+                writer.writerow([symbol, interval, 'Summary', 'BUY', summary['BUY']])
+                writer.writerow([symbol, interval, 'Summary', 'SELL', summary['SELL']])
+                writer.writerow([symbol, interval, 'Summary', 'NEUTRAL', summary['NEUTRAL']])
 
-            writer.writerow([symbol, interval, 'Oscillators', 'RECOMMENDATION', oscillators['RECOMMENDATION']])
-            for key, value in oscillators['COMPUTE'].items():
-                writer.writerow([symbol, interval, 'Oscillators', key, value])
+                writer.writerow([symbol, interval, 'Oscillators', 'RECOMMENDATION', oscillators['RECOMMENDATION']])
+                for key, value in oscillators['COMPUTE'].items():
+                    writer.writerow([symbol, interval, 'Oscillators', key, value])
 
-            writer.writerow([symbol, interval, 'Moving Averages', 'RECOMMENDATION', moving_averages['RECOMMENDATION']])
-            for key, value in moving_averages['COMPUTE'].items():
-                writer.writerow([symbol, interval, 'Moving Averages', key, value])
+                writer.writerow([symbol, interval, 'Moving Averages', 'RECOMMENDATION', moving_averages['RECOMMENDATION']])
+                for key, value in moving_averages['COMPUTE'].items():
+                    writer.writerow([symbol, interval, 'Moving Averages', key, value])
 
-            for key, value in indicators.items():
-                writer.writerow([symbol, interval, 'Indicators', key, value])
+                for key, value in indicators.items():
+                    writer.writerow([symbol, interval, 'Indicators', key, value])
+    except Exception as e:
+        st.error(f"Error saving data to CSV: {e}")
 
 # Function to calculate weighted Bollinger Bands media
 def calculate_weighted_bb_media(data, timeframes):
@@ -162,6 +166,7 @@ def main():
                     data[(symbol, interval_str_map[interval])] = analysis
                 except Exception as e:
                     data[(symbol, interval_str_map[interval])] = None
+                    st.error(f"Error fetching data for {symbol} at interval {interval_str_map[interval]}: {e}")
 
         if data:
             save_to_csv(data)
