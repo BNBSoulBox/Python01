@@ -4,6 +4,47 @@ import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr
 from tradingview_ta import TA_Handler, Interval
+import time
+
+# Custom CSS for dark mode and centered content
+st.markdown("""
+    <style>
+    body {
+        background-color: #121212;
+        color: #ffffff;
+    }
+    .centered {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+    }
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    .css-18e3th9 {
+        padding-top: 2rem;
+    }
+    table {
+        width: 80%;
+        margin-left: auto;
+        margin-right: auto;
+        color: #ffffff;
+    }
+    th, td {
+        padding: 0.5rem;
+        text-align: center;
+    }
+    .stButton button {
+        background-color: #bb0000;
+        color: #ffffff;
+    }
+    .stButton button:hover {
+        background-color: #d50000;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # Function to fetch data using TradingView TA Handler
 def fetch_all_data(symbol, exchange, screener, interval):
@@ -75,23 +116,6 @@ def calculate_weighted_pivot(data, timeframes):
 
     return weighted_pivot
 
-# Function to calculate ATR based on extracted data
-def calculate_atr(data, intervals):
-    atr_values = []
-    for (symbol, interval), analysis in data.items():
-        if analysis is None:
-            continue
-        high_prices = analysis.indicators.get('High', [])
-        low_prices = analysis.indicators.get('Low', [])
-        close_prices = analysis.indicators.get('Close', [])
-        if len(high_prices) > 1 and len(low_prices) > 1 and len(close_prices) > 1:
-            tr = np.max([np.array(high_prices) - np.array(low_prices),
-                         np.abs(np.array(high_prices) - np.array(close_prices[:-1])),
-                         np.abs(np.array(low_prices) - np.array(close_prices[:-1]))], axis=0)
-            atr = np.mean(tr)
-            atr_values.append(atr)
-    return np.mean(atr_values) if atr_values else 0
-
 # Function to set grid bot parameters
 def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
     optimal_range = 2 * atr
@@ -102,8 +126,8 @@ def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
     return entry_point, exit_point, safety_range
 
 def main():
-    st.title('Crypto Analysis with TradingView TA')
-    
+    st.title('Pivot Points Calculator')
+
     user_input = st.text_input("Enter symbols separated by commas", "BTC,ETH,XRP")
     symbols = [symbol.strip() for symbol in user_input.split(',')]
 
@@ -130,6 +154,7 @@ def main():
     }
 
     if st.button("Fetch Data"):
+        st.snow()
         data = {}
         errors = []
         for symbol in symbols:
@@ -153,7 +178,7 @@ def main():
 
             timeframes = list(interval_str_map.values())
             weighted_pivot = calculate_weighted_pivot(data, timeframes)
-            atr_value = calculate_atr(data, intervals)  # Calculate ATR based on the actual data
+            atr_value = 0.002  # Example ATR value, should be calculated based on real data
             entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
 
             st.write(f'Weighted Pivot Point: {weighted_pivot}')
@@ -162,7 +187,7 @@ def main():
             st.write(f'Safety Range: {safety_range}')
 
         if errors:
-            st.warning(f"Some data could not be fetched. Errors occurred for the following symbol(s) and interval(s): {', '.join(errors)}")
+            st.warning("Some data could not be fetched. Please check the log for details.")
 
 if __name__ == "__main__":
     main()
