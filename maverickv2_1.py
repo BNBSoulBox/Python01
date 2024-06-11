@@ -134,7 +134,7 @@ def calculate_weighted_bb_media(data, timeframes):
 
 def main():
     st.title('MAVERICK Hedge Symbols')
-    
+
     exchange = "BYBIT"
     screener = "crypto"
     intervals = [
@@ -210,11 +210,18 @@ def main():
             else:
                 st.write("No Matches")
 
-            if errors:
-                st.warning("Some data could not be fetched. Errors occurred for the following symbol(s) and interval(s):")
-                st.write("\n".join(errors))
+    search_symbol = st.text_input("Search for a Symbol")
+    if search_symbol:
+        search_symbol = search_symbol.upper().strip()
+        if search_symbol in symbols:
+            matches = [m for m in matches if m["Symbol"] == search_symbol]
+            if matches:
+                df = pd.DataFrame(matches)
+                st.table(df)
+            else:
+                st.write("Symbol not Available for this Criteria")
         else:
-            st.warning("No data could be fetched for any symbol.")
+            st.write("Symbol not Available for this Criteria")
 
 if __name__ == "__main__":
     main()
