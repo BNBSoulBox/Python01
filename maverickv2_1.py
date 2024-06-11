@@ -195,33 +195,23 @@ def main():
                         lower_bound = weighted_bb_media * 0.98
                         upper_bound = weighted_bb_media * 1.02
                         if lower_bound <= current_price <= upper_bound:
+                            percentage = ((current_price - weighted_bb_media) / weighted_bb_media) * 100
                             matches.append({
                                 "Symbol": symbol,
                                 "Current Price": current_price,
                                 "Weighted BB Media": weighted_bb_media,
                                 "Lower Bound": lower_bound,
-                                "Upper Bound": upper_bound
+                                "Upper Bound": upper_bound,
+                                "Percentage": percentage
                             })
 
             if matches:
                 df = pd.DataFrame(matches)
+                df = df.sort_values(by="Percentage")
                 st.write("Symbols with Current Price within 2% range of the Weighted Bollinger Bands Media:")
                 st.table(df)
             else:
                 st.write("No Matches")
-
-    search_symbol = st.text_input("Search for a Symbol")
-    if search_symbol:
-        search_symbol = search_symbol.upper().strip()
-        if search_symbol in symbols:
-            search_matches = [m for m in matches if m["Symbol"] == search_symbol]
-            if search_matches:
-                df = pd.DataFrame(search_matches)
-                st.table(df)
-            else:
-                st.write("Symbol not Available for this Criteria")
-        else:
-            st.write("Symbol not Available for this Criteria")
 
 if __name__ == "__main__":
     main()
