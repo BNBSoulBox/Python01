@@ -85,7 +85,7 @@ def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
     return entry_point, exit_point, safety_range
 
 def main():
-    st.title('Crypto Analysis with TradingView TA')
+    st.title('Pivot Points Calculator')
     
     user_input = st.text_input("Enter symbols separated by commas", "BTC,ETH,XRP")
     symbols = [symbol.strip() for symbol in user_input.split(',')]
