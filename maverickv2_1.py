@@ -192,8 +192,8 @@ def main():
                     # Fetch the current price from the 'close' indicator at the 30m interval
                     if (symbol, '30m') in data and data[(symbol, '30m')] is not None:
                         current_price = data[(symbol, '30m')].indicators.get('close', 0)
-                        lower_bound = weighted_bb_media * 0.965
-                        upper_bound = weighted_bb_media * 1.035
+                        lower_bound = weighted_bb_media * 0.99
+                        upper_bound = weighted_bb_media * 1.01
                         if lower_bound <= current_price <= upper_bound:
                             percentage = ((current_price - weighted_bb_media) / weighted_bb_media) * 100
                             matches.append({
@@ -208,7 +208,7 @@ def main():
             if matches:
                 df = pd.DataFrame(matches)
                 df = df.sort_values(by="Percentage")
-                st.write("Symbols with Current Price within 2% range of the Weighted Bollinger Bands Media:")
+                st.write("Symbols with Current Price within 1% range of the Weighted Bollinger Bands Media:")
                 st.table(df)
             else:
                 st.write("No Matches")
