@@ -157,6 +157,8 @@ def main():
         Interval.INTERVAL_1_DAY: '1d'
     }
 
+    matches = []
+
     if st.button("Fetch Data"):
         data = {}
         errors = []
@@ -185,15 +187,13 @@ def main():
                 weighted_bb_media = calculate_weighted_bb_media({k: v for k, v in data.items() if k[0] == symbol}, timeframes)
                 weighted_bb_media_dict[symbol] = weighted_bb_media
 
-            matches = []
-
             for symbol, weighted_bb_media in weighted_bb_media_dict.items():
                 if weighted_bb_media is not None:
                     # Fetch the current price from the 'close' indicator at the 30m interval
                     if (symbol, '30m') in data and data[(symbol, '30m')] is not None:
                         current_price = data[(symbol, '30m')].indicators.get('close', 0)
-                        lower_bound = weighted_bb_media * 0.99
-                        upper_bound = weighted_bb_media * 1.01
+                        lower_bound = weighted_bb_media * 0.98
+                        upper_bound = weighted_bb_media * 1.02
                         if lower_bound <= current_price <= upper_bound:
                             matches.append({
                                 "Symbol": symbol,
@@ -214,9 +214,9 @@ def main():
     if search_symbol:
         search_symbol = search_symbol.upper().strip()
         if search_symbol in symbols:
-            matches = [m for m in matches if m["Symbol"] == search_symbol]
-            if matches:
-                df = pd.DataFrame(matches)
+            search_matches = [m for m in matches if m["Symbol"] == search_symbol]
+            if search_matches:
+                df = pd.DataFrame(search_matches)
                 st.table(df)
             else:
                 st.write("Symbol not Available for this Criteria")
