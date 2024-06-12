@@ -4,6 +4,7 @@ import numpy as np
 from scipy.stats import pearsonr
 from tradingview_ta import TA_Handler, Interval
 import csv
+import altair as alt
 
 # Function to fetch data using TradingView TA Handler
 def fetch_all_data(symbol, exchange, screener, interval):
@@ -110,6 +111,23 @@ def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
     
     return entry_point, exit_point, safety_range
 
+# Function to create an Altair chart for visualization
+def create_chart(symbol, weighted_pivot, entry_point, exit_point, safety_range):
+    data = pd.DataFrame({
+        'Metric': ['Weighted Pivot Point', 'Entry Point', 'Exit Point', 'Safety Range'],
+        'Value': [weighted_pivot, entry_point, exit_point, safety_range]
+    })
+    
+    # Create an Altair line chart
+    chart = alt.Chart(data).mark_line(point=True).encode(
+        x='Metric',
+        y='Value'
+    ).properties(
+        title=f'{symbol} - Pivot Points'
+    )
+    
+    return chart
+
 # Streamlit app
 def main():
     st.title('Crypto Weighted ATR and Pivot Points Analysis')
@@ -206,6 +224,10 @@ def main():
                     "Value": [weighted_pivot, entry_point, exit_point, safety_range]
                 })
                 st.table(results_table)
+                
+                # Create and display the chart
+                chart = create_chart(symbol, weighted_pivot, entry_point, exit_point, safety_range)
+                st.altair_chart(chart, use_container_width=True)
 
         # Button to download the CSV file
         if st.button("Download CSV Data"):
