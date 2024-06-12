@@ -49,7 +49,7 @@ def main():
     # User input for symbols
     user_symbols = st.text_input("Enter symbols (comma separated):")
     if user_symbols:
-        symbols = [symbol.strip() + ".P" for symbol in user_symbols.split(',')]
+        symbols = [symbol.strip() for symbol in user_symbols.split(',')]
 
         exchange = "BYBIT"
         screener = "crypto"
@@ -81,8 +81,6 @@ def main():
                 try:
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
                     indicators = analysis.indicators
-                    # Debugging: print extracted indicators
-                    st.write(f"{symbol} {interval_str_map[interval]} indicators: {indicators}")
                     volume = indicators.get('volume')
                     high = indicators.get('high')
                     low = indicators.get('low')
@@ -115,6 +113,27 @@ def main():
         results_df = pd.DataFrame(results)
         st.write("Weighted ATR for the requested symbols:")
         st.table(results_df)
+
+        # Button to download the CSV file
+        if st.button("Download CSV Data"):
+            # Save data to CSV
+            with open('coin_analysis_data.csv', 'w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(['Symbol', 'Interval', 'Category', 'Indicator', 'Value'])
+                for (symbol, interval), analysis in data.items():
+                    if analysis is None:
+                        continue
+                    indicators = analysis.indicators
+                    for indicator, value in indicators.items():
+                        writer.writerow([symbol, interval, 'Indicators', indicator, value])
+
+            st.success('Data has been saved to coin_analysis_data.csv')
+            st.download_button(
+                label="Download CSV",
+                data=open('coin_analysis_data.csv').read(),
+                file_name='coin_analysis_data.csv',
+                mime='text/csv'
+            )
 
         # Print any errors encountered
         if errors:
