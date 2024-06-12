@@ -200,10 +200,12 @@ def main():
             atr_value = atr_values.get(symbol, 0)
             if atr_value:
                 entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
-                st.write(f'{symbol} - Weighted Pivot Point: {weighted_pivot}')
-                st.write(f'{symbol} - Entry Point: {entry_point}')
-                st.write(f'{symbol} - Exit Point: {exit_point}')
-                st.write(f'{symbol} - Safety Range: {safety_range}')
+                st.subheader(f'{symbol}')
+                results_table = pd.DataFrame({
+                    "Metric": ["Weighted Pivot Point", "Entry Point", "Exit Point", "Safety Range"],
+                    "Value": [weighted_pivot, entry_point, exit_point, safety_range]
+                })
+                st.table(results_table)
 
         # Button to download the CSV file
         if st.button("Download CSV Data"):
