@@ -58,7 +58,13 @@ def save_to_csv(data, filename='coin_analysis_data.csv'):
 
 # Function to calculate weighted pivot points
 def calculate_weighted_pivot(data, timeframes):
-    pivot_columns = ['Pivot.M.Classic.Middle', 'Pivot.M.Fibonacci.Middle', 'Pivot.M.Camarilla.Middle', 'Pivot.M.Woodie.Middle', 'Pivot.M.Demark.Middle']
+    pivot_columns = [
+        'Pivot.M.Classic.Middle', 
+        'Pivot.M.Fibonacci.Middle', 
+        'Pivot.M.Camarilla.Middle', 
+        'Pivot.M.Woodie.Middle', 
+        'Pivot.M.Demark.Middle'
+    ]
     pivot_data = {tf: [] for tf in timeframes}
 
     for symbol, intervals in data.items():
@@ -68,7 +74,10 @@ def calculate_weighted_pivot(data, timeframes):
             interval_str = interval
             pivot_values = [df[pivot].values[0] if pivot in df else 0 for pivot in pivot_columns]
             pivot_data[interval_str].append(np.mean(pivot_values))
-
+    
+    # Debug: Print pivot_data to check the values
+    print("Pivot Data:", pivot_data)
+    
     correlations = pd.DataFrame(index=timeframes, columns=timeframes)
     for tf1 in timeframes:
         for tf2 in timeframes:
@@ -80,10 +89,16 @@ def calculate_weighted_pivot(data, timeframes):
                     correlations.loc[tf1, tf2] = 0
             else:
                 correlations.loc[tf1, tf2] = 1.0
-
+    
+    # Debug: Print correlations to check the values
+    print("Correlations:", correlations)
+    
     weights = correlations.mean(axis=1)
     weighted_pivot = sum(weights[tf] * np.mean(pivot_data[tf]) for tf in timeframes if len(pivot_data[tf]) > 0) / sum(weights)
-
+    
+    # Debug: Print weighted_pivot to check the value
+    print("Weighted Pivot:", weighted_pivot)
+    
     return weighted_pivot
 
 # Function to set grid bot parameters
@@ -146,6 +161,15 @@ def main():
                             'low': [low],
                             'close': [close]
                         })
+                        for pivot in [
+                            'Pivot.M.Classic.Middle', 
+                            'Pivot.M.Fibonacci.Middle', 
+                            'Pivot.M.Camarilla.Middle', 
+                            'Pivot.M.Woodie.Middle', 
+                            'Pivot.M.Demark.Middle'
+                        ]:
+                            if pivot in indicators:
+                                df[pivot] = [indicators[pivot]]
                         data[symbol][interval_str_map[interval]] = df
                     else:
                         data[symbol][interval_str_map[interval]] = pd.DataFrame()
