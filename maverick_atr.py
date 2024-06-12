@@ -29,8 +29,7 @@ def calculate_weighted_atr(data, symbol):
     atr_data = []
     volume_data = []
     
-    for interval in data[symbol]:
-        df = data[symbol][interval]
+    for interval, df in data[symbol].items():
         if not df.empty and 'high' in df and 'low' in df and 'close' in df and 'volume' in df:
             true_range = calculate_true_range(df['high'], df['low'], df['close'])
             weighted_tr = true_range * df['volume']
@@ -82,13 +81,24 @@ def main():
                 try:
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
                     indicators = analysis.indicators
-                    df = pd.DataFrame({
-                        'volume': [indicators['volume']],
-                        'high': [indicators['high']],
-                        'low': [indicators['low']],
-                        'close': [indicators['close']]
-                    })
-                    data[symbol][interval_str_map[interval]] = df
+                    # Debugging: print extracted indicators
+                    st.write(f"{symbol} {interval_str_map[interval]} indicators: {indicators}")
+                    volume = indicators.get('volume')
+                    high = indicators.get('high')
+                    low = indicators.get('low')
+                    close = indicators.get('close')
+
+                    if volume is not None and high is not None and low is not None and close is not None:
+                        df = pd.DataFrame({
+                            'volume': [volume],
+                            'high': [high],
+                            'low': [low],
+                            'close': [close]
+                        })
+                        data[symbol][interval_str_map[interval]] = df
+                    else:
+                        data[symbol][interval_str_map[interval]] = pd.DataFrame()
+                        errors.append(f"Missing data for {symbol} at interval {interval_str_map[interval]}")
                 except Exception as e:
                     data[symbol][interval_str_map[interval]] = pd.DataFrame()
                     errors.append(f"Error fetching data for {symbol} at interval {interval_str_map[interval]}: {e}")
@@ -105,6 +115,12 @@ def main():
         results_df = pd.DataFrame(results)
         st.write("Weighted ATR for the requested symbols:")
         st.table(results_df)
+
+        # Print any errors encountered
+        if errors:
+            st.write("Errors encountered:")
+            for error in errors:
+                st.write(error)
 
 if __name__ == "__main__":
     main()
