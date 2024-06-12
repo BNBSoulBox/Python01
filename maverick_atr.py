@@ -31,12 +31,14 @@ def calculate_weighted_atr(data, symbol):
     
     for interval in data[symbol]:
         df = data[symbol][interval]
-        if not df.empty:
+        if not df.empty and 'high' in df and 'low' in df and 'close' in df and 'volume' in df:
             true_range = calculate_true_range(df['high'], df['low'], df['close'])
-            atr = true_range.rolling(window=14).mean()
             weighted_tr = true_range * df['volume']
-            atr_data.append(weighted_tr.sum() / df['volume'].sum())
+            atr_data.append(weighted_tr.sum())
             volume_data.append(df['volume'].sum())
+    
+    if sum(volume_data) == 0:
+        return None  # No volume data available to calculate weighted ATR
     
     weighted_atr = sum(atr_data) / sum(volume_data)
     return weighted_atr
@@ -93,7 +95,10 @@ def main():
 
         for symbol in symbols:
             weighted_atr = calculate_weighted_atr(data, symbol)
-            results.append({"Symbol": symbol, "Weighted ATR": weighted_atr})
+            if weighted_atr is not None:
+                results.append({"Symbol": symbol, "Weighted ATR": weighted_atr})
+            else:
+                results.append({"Symbol": symbol, "Weighted ATR": "No volume data"})
 
         results_df = pd.DataFrame(results)
         st.write("Weighted ATR for the requested symbols:")
