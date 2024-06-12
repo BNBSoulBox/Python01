@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from tradingview_ta import TA_Handler, Interval
+import csv
 
 # Function to fetch data using TradingView TA Handler
 def fetch_all_data(symbol, exchange, screener, interval):
@@ -74,7 +75,7 @@ def main():
         }
 
         data = {symbol: {} for symbol in symbols}
-        errors = []
+        error_symbols = set()
 
         for symbol in symbols:
             for interval in intervals:
@@ -96,10 +97,10 @@ def main():
                         data[symbol][interval_str_map[interval]] = df
                     else:
                         data[symbol][interval_str_map[interval]] = pd.DataFrame()
-                        errors.append(f"Missing data for {symbol} at interval {interval_str_map[interval]}")
-                except Exception as e:
+                        error_symbols.add(symbol)
+                except Exception:
                     data[symbol][interval_str_map[interval]] = pd.DataFrame()
-                    errors.append(f"Error fetching data for {symbol} at interval {interval_str_map[interval]}: {e}")
+                    error_symbols.add(symbol)
 
         results = []
 
@@ -120,12 +121,12 @@ def main():
             with open('coin_analysis_data.csv', 'w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(['Symbol', 'Interval', 'Category', 'Indicator', 'Value'])
-                for (symbol, interval), analysis in data.items():
-                    if analysis is None:
-                        continue
-                    indicators = analysis.indicators
-                    for indicator, value in indicators.items():
-                        writer.writerow([symbol, interval, 'Indicators', indicator, value])
+                for symbol in symbols:
+                    for interval, df in data[symbol].items():
+                        if not df.empty:
+                            for index, row in df.iterrows():
+                                for column, value in row.items():
+                                    writer.writerow([symbol, interval, 'Indicators', column, value])
 
             st.success('Data has been saved to coin_analysis_data.csv')
             st.download_button(
@@ -136,10 +137,8 @@ def main():
             )
 
         # Print any errors encountered
-        if errors:
-            st.write("Errors encountered:")
-            for error in errors:
-                st.write(error)
+        if error_symbols:
+            st.write("Some symbols encountered errors and could not fetch complete data.")
 
 if __name__ == "__main__":
     main()
