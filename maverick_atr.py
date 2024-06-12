@@ -81,11 +81,13 @@ def main():
             for interval in intervals:
                 try:
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
-                    df = pd.DataFrame(analysis.indicators)
-                    df['volume'] = analysis.indicators.get('volume', 0)
-                    df['high'] = analysis.indicators.get('high', 0)
-                    df['low'] = analysis.indicators.get('low', 0)
-                    df['close'] = analysis.indicators.get('close', 0)
+                    indicators = analysis.indicators
+                    df = pd.DataFrame({
+                        'volume': [indicators['volume']],
+                        'high': [indicators['high']],
+                        'low': [indicators['low']],
+                        'close': [indicators['close']]
+                    })
                     data[symbol][interval_str_map[interval]] = df
                 except Exception as e:
                     data[symbol][interval_str_map[interval]] = pd.DataFrame()
