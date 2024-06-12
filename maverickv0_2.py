@@ -49,41 +49,25 @@ def save_to_csv(data, filename='coin_analysis_data.csv'):
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(['Symbol', 'Interval', 'Category', 'Indicator', 'Value'])
-        for (symbol, interval), analysis in data.items():
-            if analysis is None:
-                continue
-            summary = analysis.summary
-            oscillators = analysis.oscillators
-            moving_averages = analysis.moving_averages
-            indicators = analysis.indicators
-
-            writer.writerow([symbol, interval, 'Summary', 'RECOMMENDATION', summary['RECOMMENDATION']])
-            writer.writerow([symbol, interval, 'Summary', 'BUY', summary['BUY']])
-            writer.writerow([symbol, interval, 'Summary', 'SELL', summary['SELL']])
-            writer.writerow([symbol, interval, 'Summary', 'NEUTRAL', summary['NEUTRAL']])
-
-            writer.writerow([symbol, interval, 'Oscillators', 'RECOMMENDATION', oscillators['RECOMMENDATION']])
-            for key, value in oscillators['COMPUTE'].items():
-                writer.writerow([symbol, interval, 'Oscillators', key, value])
-
-            writer.writerow([symbol, interval, 'Moving Averages', 'RECOMMENDATION', moving_averages['RECOMMENDATION']])
-            for key, value in moving_averages['COMPUTE'].items():
-                writer.writerow([symbol, interval, 'Moving Averages', key, value])
-
-            for key, value in indicators.items():
-                writer.writerow([symbol, interval, 'Indicators', key, value])
+        for symbol, intervals in data.items():
+            for interval, df in intervals.items():
+                if df.empty:
+                    continue
+                for column, value in df.items():
+                    writer.writerow([symbol, interval, 'Indicators', column, value])
 
 # Function to calculate weighted pivot points
 def calculate_weighted_pivot(data, timeframes):
     pivot_columns = ['Pivot.M.Classic.Middle', 'Pivot.M.Fibonacci.Middle', 'Pivot.M.Camarilla.Middle', 'Pivot.M.Woodie.Middle', 'Pivot.M.Demark.Middle']
     pivot_data = {tf: [] for tf in timeframes}
 
-    for (symbol, interval), analysis in data.items():
-        if analysis is None:
-            continue
-        interval_str = interval
-        pivot_values = [analysis.indicators.get(pivot, 0) for pivot in pivot_columns]
-        pivot_data[interval_str].append(np.mean(pivot_values))
+    for symbol, intervals in data.items():
+        for interval, df in intervals.items():
+            if df.empty:
+                continue
+            interval_str = interval
+            pivot_values = [df[pivot].values[0] if pivot in df else 0 for pivot in pivot_columns]
+            pivot_data[interval_str].append(np.mean(pivot_values))
 
     correlations = pd.DataFrame(index=timeframes, columns=timeframes)
     for tf1 in timeframes:
