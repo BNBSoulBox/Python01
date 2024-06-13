@@ -3,21 +3,22 @@ import streamlit as st
 def calculate_profits(grid_profit, initial_investment, num_positions):
     # Convert grid profit percentage to a decimal
     grid_profit_decimal = grid_profit / 100
-    # Initialize variables to track realized and unrealized profits
-    total_investment = initial_investment
+    # Initialize variables to track profits
     realized_profit = 0
     unrealized_profit = 0
     
-    # List to store profit per position
+    # List to store unrealized profit per position
     unrealized_profits_per_position = [0] * num_positions
 
     for i in range(num_positions):
         if i == 0:
-            profit = total_investment * grid_profit_decimal
+            profit = initial_investment * grid_profit_decimal
         else:
-            profit = (total_investment + sum(unrealized_profits_per_position[:i])) * grid_profit_decimal
+            profit = initial_investment * grid_profit_decimal
+            for j in range(i):
+                unrealized_profits_per_position[j] += initial_investment * grid_profit_decimal
+        
         unrealized_profits_per_position[i] = profit
-        total_investment += profit
 
     unrealized_profit = sum(unrealized_profits_per_position[:-1])
     realized_profit = unrealized_profits_per_position[-1]
