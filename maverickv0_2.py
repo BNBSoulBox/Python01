@@ -112,21 +112,26 @@ def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
     return entry_point, exit_point, safety_range
 
 # Function to create an Altair chart for visualization
-def create_chart(symbol, weighted_pivot, entry_point, exit_point, safety_range):
-    data = pd.DataFrame({
-        'Metric': ['Weighted Pivot Point', 'Entry Point', 'Exit Point', 'Safety Range'],
-        'Value': [weighted_pivot, entry_point, exit_point, safety_range]
-    })
+def create_chart(symbol, metrics_data):
+    data = pd.DataFrame(metrics_data)
     
     # Create an Altair line chart
     chart = alt.Chart(data).mark_line(point=True).encode(
         x='Metric',
         y='Value'
     ).properties(
-        title=f'{symbol} - Pivot Points'
+        title=f'{symbol} - Pivot Points and Metrics'
     )
     
     return chart
+
+# Function to calculate additional metrics
+def calculate_additional_metrics(weighted_pivot, atr, safety_range):
+    upper_limit = weighted_pivot * 1.20
+    lower_limit = weighted_pivot * 0.80
+    grid_profit = ((safety_range + atr) / 2) / weighted_pivot * 10
+    
+    return upper_limit, lower_limit, grid_profit
 
 # Streamlit app
 def main():
@@ -218,15 +223,24 @@ def main():
             atr_value = atr_values.get(symbol, 0)
             if atr_value:
                 entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
+                upper_limit, lower_limit, grid_profit = calculate_additional_metrics(weighted_pivot, atr_value, safety_range)
+                
                 st.subheader(f'{symbol}')
-                results_table = pd.DataFrame({
-                    "Metric": ["Weighted Pivot Point", "Entry Point", "Exit Point", "Safety Range"],
-                    "Value": [weighted_pivot, entry_point, exit_point, safety_range]
-                })
+                metrics_data = {
+                    "Metric": [
+                        "Weighted Pivot Point", "Entry Point", "Exit Point", "Safety Range",
+                        "Upper Limit", "Lower Limit", "Grid Profit (%)"
+                    ],
+                    "Value": [
+                        weighted_pivot, entry_point, exit_point, safety_range,
+                        upper_limit, lower_limit, f'{grid_profit:.2f}%'
+                    ]
+                }
+                results_table = pd.DataFrame(metrics_data)
                 st.table(results_table)
                 
                 # Create and display the chart
-                chart = create_chart(symbol, weighted_pivot, entry_point, exit_point, safety_range)
+                chart = create_chart(symbol, metrics_data)
                 st.altair_chart(chart, use_container_width=True)
 
         # Button to download the CSV file
