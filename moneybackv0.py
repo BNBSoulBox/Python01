@@ -33,15 +33,17 @@ def calculate_ma(mode, series, span):
     if mode == "ema":
         return ema(series, span)
     elif mode == "wma":
-        return series.rolling(window=span).apply(lambda x: np.average(x, weights=np.arange(1, span + 1)), raw=True)
+        weights = np.arange(1, span + 1)
+        return series.rolling(window=span).apply(lambda prices: np.dot(prices, weights) / weights.sum(), raw=True)
     elif mode == "swma":
         return series.rolling(window=span).mean()
     elif mode == "vwma":
-        return series.rolling(window=span).apply(lambda x: np.average(x, weights=x), raw=True)
+        weights = series * series.rolling(window=span).sum()
+        return series.rolling(window=span).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
     elif mode == "hull":
-        wma_half = series.rolling(window=int(span / 2)).apply(lambda x: np.average(x, weights=np.arange(1, int(span / 2) + 1)), raw=True)
-        wma_full = series.rolling(window=span).apply(lambda x: np.average(x, weights=np.arange(1, span + 1)), raw=True)
-        return wma((2 * wma_half) - wma_full, int(np.sqrt(span)))
+        wma_half = calculate_ma("wma", series, span // 2)
+        wma_full = calculate_ma("wma", series, span)
+        return calculate_ma("wma", (2 * wma_half - wma_full), int(np.sqrt(span)))
     elif mode == "tema":
         return tema(series, span)
     else:
@@ -88,17 +90,6 @@ def set_grid_bot_parameters(weighted_tdfi, atr, safety_margin=0.5):
     entry_point = weighted_tdfi - (optimal_range / 2)
     exit_point = weighted_tdfi + (optimal_range / 2)
     return entry_point, exit_point, safety_range
-
-# Function to create an Altair chart for visualization
-def create_chart(symbol, metrics_data):
-    data = pd.DataFrame(metrics_data)
-    chart = alt.Chart(data).mark_line(point=True).encode(
-        x='Metric',
-        y='Value'
-    ).properties(
-        title=f'{symbol} - TDFI Metrics'
-    )
-    return chart
 
 # Streamlit app
 def main():
