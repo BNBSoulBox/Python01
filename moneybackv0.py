@@ -83,6 +83,85 @@ def calculate_weighted_tdfi(data, symbol):
     
     return weighted_td
 
+# Function to calculate weighted pivot points
+def calculate_weighted_pivot(data, timeframes):
+    pivot_columns = [
+        'Pivot.M.Classic.Middle', 
+        'Pivot.M.Fibonacci.Middle', 
+        'Pivot.M.Camarilla.Middle', 
+        'Pivot.M.Woodie.Middle', 
+        'Pivot.M.Demark.Middle'
+    ]
+    pivot_data = {tf: [] for tf in timeframes}
+
+    for symbol, intervals in data.items():
+        for interval, df in intervals.items():
+            if df.empty:
+                continue
+            interval_str = interval
+            pivot_values = [df[pivot].values[0] if pivot in df else 0 for pivot in pivot_columns]
+            pivot_data[interval_str].append(np.mean(pivot_values))
+    
+    correlations = pd.DataFrame(index=timeframes, columns=timeframes)
+    for tf1 in timeframes:
+        for tf2 in timeframes:
+            if tf1 != tf2:
+                try:
+                    corr_values = pearsonr(pivot_data[tf1], pivot_data[tf2])[0]
+                    correlations.loc[tf1, tf2] = corr_values
+                except ValueError:
+                    correlations.loc[tf1, tf2] = 0
+            else:
+                correlations.loc[tf1, tf2] = 1.0
+    
+    weights = correlations.mean(axis=1)
+    weighted_pivot = sum(weights[tf] * np.mean(pivot_data[tf]) for tf in timeframes if len(pivot_data[tf]) > 0) / sum(weights)
+    
+    return weighted_pivot
+
+# Function to set grid bot parameters
+def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
+    optimal_range = 2 * atr
+    safety_range = optimal_range * (1 + safety_margin)
+    entry_point = weighted_pivot - (optimal_range / 2)
+    exit_point = weighted_pivot + (optimal_range / 2)
+    
+    return entry_point, exit_point, safety_range
+
+# Function to create an Altair chart for visualization
+def create_chart(symbol, metrics_data):
+    data = pd.DataFrame(metrics_data)
+    
+    # Create an Altair line chart
+    chart = alt.Chart(data).mark_line(point=True).encode(
+        x='Metric',
+        y='Value'
+    ).properties(
+        title=f'{symbol} - Pivot Points and Metrics'
+    )
+    
+    return chart
+
+# Function to calculate additional metrics
+def calculate_additional_metrics(weighted_pivot, atr, safety_range):
+    upper_limit = weighted_pivot * 1.20
+    lower_limit = weighted_pivot * 0.80
+    grid_profit = ((safety_range + atr) / 2) / weighted_pivot * 10
+    
+    return upper_limit, lower_limit, grid_profit
+
+# Function to save data to a CSV file
+def save_to_csv(data, filename='coin_analysis_data.csv'):
+    with open(filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['Symbol', 'Interval', 'Category', 'Indicator', 'Value'])
+        for symbol, intervals in data.items():
+            for interval, df in intervals.items():
+                if df.empty:
+                    continue
+                for column, value in df.items():
+                    writer.writerow([symbol, interval, 'Indicators', column, value])
+
 # Streamlit app
 def main():
     st.title('Crypto Weighted ATR and TDFI Analysis')
