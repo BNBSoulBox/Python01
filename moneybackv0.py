@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr
 from tradingview_ta import TA_Handler, Interval
-import csv
 import altair as alt
 
 # Function to fetch data using TradingView TA Handler
@@ -18,24 +17,33 @@ def fetch_all_data(symbol, exchange, screener, interval):
     analysis = handler.get_analysis()
     return analysis
 
-# Function to calculate EMA
+# Exponential Moving Average
 def ema(series, span):
     return series.ewm(span=span, adjust=False).mean()
 
-# Function to calculate TEMA
+# Triple Exponential Moving Average
 def tema(series, span):
     ema1 = ema(series, span)
     ema2 = ema(ema1, span)
     ema3 = ema(ema2, span)
     return (3 * ema1) - (3 * ema2) + ema3
 
-# Function to calculate moving average based on mode
+# Calculate the Moving Average based on the mode
 def calculate_ma(mode, series, span):
     if mode == "ema":
         return ema(series, span)
+    elif mode == "wma":
+        return series.rolling(window=span).apply(lambda x: np.average(x, weights=np.arange(1, span + 1)), raw=True)
+    elif mode == "swma":
+        return series.rolling(window=span).mean()
+    elif mode == "vwma":
+        return series.rolling(window=span).apply(lambda x: np.average(x, weights=x), raw=True)
+    elif mode == "hull":
+        wma_half = series.rolling(window=int(span / 2)).apply(lambda x: np.average(x, weights=np.arange(1, int(span / 2) + 1)), raw=True)
+        wma_full = series.rolling(window=span).apply(lambda x: np.average(x, weights=np.arange(1, span + 1)), raw=True)
+        return wma((2 * wma_half) - wma_full, int(np.sqrt(span)))
     elif mode == "tema":
         return tema(series, span)
-    # Add other modes as required
     else:
         return series.rolling(window=span).mean()
 
@@ -48,13 +56,13 @@ def calculate_tdfi(price_series, lookback, mma_length, mma_mode, smma_length, sm
     impetsmma = smma.diff()
     divma = (mma - smma).abs()
     averimpet = (impetmma + impetsmma) / 2
-    tdf = (divma ** 1) * (averimpet ** n_length)
+    tdf = divma * (averimpet ** n_length)
     tdf_normalized = tdf / tdf.abs().rolling(window=lookback * n_length).max()
     return tdf_normalized
 
 # Function to calculate weighted TDFI using Pearson correlation
 def calculate_weighted_tdfi(data, intervals):
-    tdfi_values = {interval: data[interval]['TDFI'].dropna() for interval in intervals}
+    tdfi_values = {interval: data[interval].dropna() for interval in intervals}
     correlations = pd.DataFrame(index=intervals, columns=intervals)
     
     for tf1 in intervals:
@@ -81,11 +89,21 @@ def set_grid_bot_parameters(weighted_tdfi, atr, safety_margin=0.5):
     exit_point = weighted_tdfi + (optimal_range / 2)
     return entry_point, exit_point, safety_range
 
+# Function to create an Altair chart for visualization
+def create_chart(symbol, metrics_data):
+    data = pd.DataFrame(metrics_data)
+    chart = alt.Chart(data).mark_line(point=True).encode(
+        x='Metric',
+        y='Value'
+    ).properties(
+        title=f'{symbol} - TDFI Metrics'
+    )
+    return chart
+
 # Streamlit app
 def main():
     st.title('Crypto Weighted TDFI and Grid Bot Parameters')
 
-    # User input for symbols
     user_symbols = st.text_input("Enter symbols (comma separated):")
     if user_symbols:
         symbols = [symbol.strip() for symbol in user_symbols.split(',')]
@@ -120,33 +138,14 @@ def main():
                 try:
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
                     indicators = analysis.indicators
-                    volume = indicators.get('volume')
-                    high = indicators.get('high')
-                    low = indicators.get('low')
-                    close = indicators.get('close')
-
-                    if volume is not None and high is not None and low is not None and close is not None:
-                        df = pd.DataFrame({
-                            'volume': [volume],
-                            'high': [high],
-                            'low': [low],
-                            'close': [close]
-                        })
-                        for pivot in [
-                            'Pivot.M.Classic.Middle', 
-                            'Pivot.M.Fibonacci.Middle', 
-                            'Pivot.M.Camarilla.Middle', 
-                            'Pivot.M.Woodie.Middle', 
-                            'Pivot.M.Demark.Middle'
-                        ]:
-                            if pivot in indicators:
-                                df[pivot] = [indicators[pivot]]
-                        data[symbol][interval_str_map[interval]] = df
+                    if 'close' in indicators:
+                        close_prices = pd.Series(indicators['close'])
+                        data[symbol][interval_str_map[interval]] = close_prices
                     else:
-                        data[symbol][interval_str_map[interval]] = pd.DataFrame()
+                        data[symbol][interval_str_map[interval]] = pd.Series(dtype='float64')
                         error_symbols.add(symbol)
                 except Exception:
-                    data[symbol][interval_str_map[interval]] = pd.DataFrame()
+                    data[symbol][interval_str_map[interval]] = pd.Series(dtype='float64')
                     error_symbols.add(symbol)
 
         results = []
@@ -154,23 +153,18 @@ def main():
         for symbol in symbols:
             st.subheader(f'Symbol: {symbol}')
             
-            # Fetch and calculate TDFI for each interval
             tdfi_data = {}
             for interval in intervals:
                 df = data[symbol].get(interval_str_map[interval])
-                if df is not None and not df.empty:
-                    close_prices = df['close']
-                    tdfi_data[interval_str_map[interval]] = calculate_tdfi(close_prices, 13, 13, "ema", 13, "ema", 3)
-                    df['TDFI'] = tdfi_data[interval_str_map[interval]]
+                if not df.empty:
+                    tdfi_data[interval_str_map[interval]] = calculate_tdfi(df, 13, 13, "ema", 13, "ema", 3)
                     st.write(f"Interval: {interval_str_map[interval]}")
-                    st.write(df[['close', 'TDFI']])
+                    st.line_chart(tdfi_data[interval_str_map[interval]])
 
-            # Calculate weighted TDFI using Pearson correlation
             weighted_tdfi = calculate_weighted_tdfi(tdfi_data, interval_str_map.values())
             st.write(f"Weighted TDFI: {weighted_tdfi}")
 
-            # Set and display grid bot parameters
-            atr = df['close'].std()  # Placeholder for ATR calculation, replace with actual ATR function if available
+            atr = df.std()  # Placeholder for ATR calculation, replace with actual ATR function if available
             entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_tdfi, atr)
             st.write(f"Entry Point: {entry_point}, Exit Point: {exit_point}, Safety Range: {safety_range}")
 
@@ -180,7 +174,6 @@ def main():
         st.write("Weighted TDFI and Grid Bot Parameters for the requested symbols:")
         st.table(results_df)
 
-        # Print any errors encountered
         if error_symbols:
             st.write("Some symbols encountered errors and could not fetch complete data.")
 
