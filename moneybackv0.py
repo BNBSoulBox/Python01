@@ -1,120 +1,106 @@
 import streamlit as st
+from tradingview_ta import TA_Handler, Interval, Exchange
 import pandas as pd
-from scipy.stats import pearsonr
-from tradingview_ta import TA_Handler, Interval
+import numpy as np
 
-# Function to fetch data using TradingView TA Handler
-def fetch_all_data(symbol, exchange, screener, interval):
+# Function to fetch indicator data
+def fetch_indicator_data(symbol, interval):
     handler = TA_Handler(
         symbol=symbol,
-        exchange=exchange,
-        screener=screener,
-        interval=interval,
-        timeout=None
+        screener="crypto",
+        exchange="BINANCE",
+        interval=interval
     )
-    analysis = handler.get_analysis()
-    return analysis
+    try:
+        analysis = handler.get_analysis()
+        return analysis.indicators
+    except Exception as e:
+        st.error(f"Error fetching data for {symbol} on {interval}: {e}")
+        return None
+
+# Function to calculate EMA
+def ema(series, span):
+    return series.ewm(span=span, adjust=False).mean()
+
+# Function to calculate TEMA
+def tema(series, span):
+    ema1 = ema(series, span)
+    ema2 = ema(ema1, span)
+    ema3 = ema(ema2, span)
+    return (3 * ema1) - (3 * ema2) + ema3
+
+# Function to calculate moving average based on mode
+def calculate_ma(mode, series, span):
+    if mode == "ema":
+        return ema(series, span)
+    elif mode == "tema":
+        return tema(series, span)
+    # Add other modes as required
+    else:
+        return series.rolling(window=span).mean()
 
 # Function to calculate TDFI
-def calculate_tdfi(data, symbol):
-    td_data = {}
-    
-    for interval, df in data[symbol].items():
-        if not df.empty and 'close' in df:
-            close = df['close']
-            diff_close = close.diff()
-            pos_trend = diff_close.where(diff_close > 0, 0).sum()
-            neg_trend = diff_close.where(diff_close < 0, 0).sum()
-            td_data[interval] = pos_trend + abs(neg_trend)
-    
-    return td_data
+def calculate_tdfi(price_series, lookback, mma_length, mma_mode, smma_length, smma_mode, n_length):
+    price_series = price_series * 1000  # Scaling price as in Pine Script
+    mma = calculate_ma(mma_mode, price_series, mma_length)
+    smma = calculate_ma(smma_mode, mma, smma_length)
+    impetmma = mma.diff()
+    impetsmma = smma.diff()
+    divma = (mma - smma).abs()
+    averimpet = (impetmma + impetsmma) / 2
+    tdf = (divma ** 1) * (averimpet ** n_length)
+    tdf_normalized = tdf / tdf.abs().rolling(window=lookback * n_length).max()
+    return tdf_normalized
 
-# Function to calculate weighted TDFI using Pearson method
-def calculate_weighted_tdfi(data, symbol):
-    td_data = calculate_tdfi(data, symbol)
-    intervals = list(td_data.keys())
-    
-    correlations = pd.DataFrame(index=intervals, columns=intervals)
-    
-    for tf1 in intervals:
-        for tf2 in intervals:
-            if tf1 != tf2:
-                try:
-                    corr_values = pearsonr([td_data[tf1]], [td_data[tf2]])[0]
-                    correlations.loc[tf1, tf2] = corr_values
-                except ValueError:
-                    correlations.loc[tf1, tf2] = 0
-            else:
-                correlations.loc[tf1, tf2] = 1.0
-    
-    weights = correlations.mean(axis=1)
-    weighted_td = sum(weights[tf] * td_data[tf] for tf in intervals if tf in td_data) / sum(weights)
-    return weighted_td
+# Streamlit UI
+st.title("Trend Direction Force Index (TDFI) Calculator")
 
-# Streamlit app
-def main():
-    st.title('Crypto Weighted TDFI Analysis')
+# User inputs
+symbol_input = st.text_input("Enter symbol names (comma-separated)", value="BAKEUSDT")
+interval = st.selectbox("Select interval", options=[Interval.INTERVAL_5_MINUTES, Interval.INTERVAL_15_MINUTES, Interval.INTERVAL_30_MINUTES, Interval.INTERVAL_1_HOUR, Interval.INTERVAL_2_HOURS, Interval.INTERVAL_4_HOURS, Interval.INTERVAL_1_DAY])
 
-    # User input for symbols
-    user_symbols = st.text_input("Enter symbols (comma separated):")
-    if user_symbols:
-        symbols = [symbol.strip() for symbol in user_symbols.split(',')]
+# Parameters
+lookback = 13
+mma_length = 13
+mma_mode = "ema"
+smma_length = 13
+smma_mode = "ema"
+n_length = 3
+filter_high = 0.05
+filter_low = -0.05
 
-        exchange = "BYBIT"
-        screener = "crypto"
-        intervals = [
-            Interval.INTERVAL_5_MINUTES,
-            Interval.INTERVAL_15_MINUTES,
-            Interval.INTERVAL_30_MINUTES,
-            Interval.INTERVAL_1_HOUR,
-            Interval.INTERVAL_2_HOURS,
-            Interval.INTERVAL_4_HOURS,
-            Interval.INTERVAL_1_DAY
-        ]
+# Process each symbol
+symbols = [symbol.strip() for symbol in symbol_input.split(',')]
+for symbol in symbols:
+    st.subheader(f"Symbol: {symbol}")
 
-        interval_str_map = {
-            Interval.INTERVAL_5_MINUTES: '5m',
-            Interval.INTERVAL_15_MINUTES: '15m',
-            Interval.INTERVAL_30_MINUTES: '30m',
-            Interval.INTERVAL_1_HOUR: '1h',
-            Interval.INTERVAL_2_HOURS: '2h',
-            Interval.INTERVAL_4_HOURS: '4h',
-            Interval.INTERVAL_1_DAY: '1d'
-        }
+    # Fetch data
+    data = fetch_indicator_data(symbol, interval)
+    if data:
+        df = pd.DataFrame(data, index=[0])
+        df = df.T
+        df.columns = ['Value']
+        df.reset_index(inplace=True)
+        df.rename(columns={'index': 'Indicator'}, inplace=True)
 
-        data = {symbol: {} for symbol in symbols}
-        error_symbols = set()
+        # Assuming 'close' prices are in the DataFrame under the key 'close'
+        if 'close' in df['Indicator'].values:
+            price_series = df[df['Indicator'] == 'close']['Value'].astype(float)
 
-        for symbol in symbols:
-            for interval in intervals:
-                try:
-                    analysis = fetch_all_data(symbol, exchange, screener, interval)
-                    indicators = analysis.indicators
-                    close = indicators.get('close')
-                    
-                    if close is not None:
-                        df = pd.DataFrame({'close': [close]})
-                        data[symbol][interval_str_map[interval]] = df
-                    else:
-                        data[symbol][interval_str_map[interval]] = pd.DataFrame()
-                        error_symbols.add(symbol)
-                except Exception:
-                    data[symbol][interval_str_map[interval]] = pd.DataFrame()
-                    error_symbols.add(symbol)
+            # Calculate TDFI
+            tdfi_values = calculate_tdfi(price_series, lookback, mma_length, mma_mode, smma_length, smma_mode, n_length)
 
-        results = []
+            # Apply filtering and generate signals
+            signal = tdfi_values.apply(lambda x: 'green' if x > filter_high else 'red' if x < filter_low else 'gray')
 
-        for symbol in symbols:
-            weighted_td = calculate_weighted_tdfi(data, symbol)
-            results.append({"Symbol": symbol, "Weighted TDFI": weighted_td})
+            # Create results DataFrame
+            results_df = pd.DataFrame({
+                'TDFI Value': tdfi_values,
+                'Signal': signal
+            })
 
-        results_df = pd.DataFrame(results)
-        st.write("Weighted TDFI for the requested symbols:")
-        st.table(results_df)
-
-        # Print any errors encountered
-        if error_symbols:
-            st.write("Some symbols encountered errors and could not fetch complete data.")
-
-if __name__ == "__main__":
-    main()
+            st.write(results_df)
+        else:
+            st.warning(f"No 'close' price data available for {symbol}")
+    else:
+        st.warning(f"Could not fetch data for {symbol}")
