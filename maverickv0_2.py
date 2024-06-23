@@ -135,7 +135,7 @@ def calculate_additional_metrics(weighted_pivot, atr, safety_range):
 
 # Streamlit app
 def main():
-    st.title('Crypto Weighted ATR and Pivot Points Analysis')
+    st.title('#ValenBot : Análisis de Grid y Rango de Entrada')
 
     # User input for symbols
     user_symbols = st.text_input("Enter symbols (comma separated):")
