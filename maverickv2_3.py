@@ -149,7 +149,7 @@ def home():
 
     matches = []
 
-    if st.button("Fetch Data"):
+    if st.button("Has la Magia"):
         data = {}
         errors = []
         for symbol in symbols:
@@ -198,10 +198,10 @@ def home():
             if matches:
                 df = pd.DataFrame(matches)
                 df = df.sort_values(by="Percentage")
-                st.write("Symbols with Current Price within 1% range of the Weighted Bollinger Bands Media:")
+                st.write("Simbolos oscilando en el Pivote:")
                 st.table(df)
             else:
-                st.write("No Matches")
+                st.write("No Manches Wey")
 
 def valen_bot():
     st.title("#ValenBot")
