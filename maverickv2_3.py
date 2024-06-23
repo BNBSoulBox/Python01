@@ -197,8 +197,8 @@ def home():
 
             if matches:
                 df = pd.DataFrame(matches)
-                df = df.sort_values(by "Porcentaje")
-                st.write("Pares en el Rango de Pivote:")
+                df = df.sort_values(by "Percentage")
+                st.write("Pares oscilando en el Pivote:")
                 st.table(df)
             else:
                 st.write("No Matches")
