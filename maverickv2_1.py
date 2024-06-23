@@ -133,7 +133,7 @@ def calculate_weighted_bb_media(data, timeframes):
     return weighted_bb_media
 
 def main():
-    st.title('MAVERICK Hedge Symbols')
+    st.title('#MaryBot - Pares para Estrategia de Cobertura')
 
     exchange = "BYBIT"
     screener = "crypto"
