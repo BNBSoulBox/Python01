@@ -173,7 +173,7 @@ def calculate_weighted_bb_media(data, timeframes):
     return weighted_bb_media
 
 def home():
-    st.title('#MaryBot - Pares para Estrategia de Cobertura')
+    st.title('#MaryBot - Simbolos para Estrategia de Cobertura')
 
     exchange = "BYBIT"
     screener = "crypto"
@@ -199,7 +199,7 @@ def home():
 
     matches = []
 
-    if st.button("Fetch Data"):
+    if st.button("Has la Magia"):
         data = {}
         errors = []
         for symbol in symbols:
