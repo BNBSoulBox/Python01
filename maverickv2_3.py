@@ -249,11 +249,33 @@ def home():
                 df.index += 1  # Start index from 1
                 df.index.name = 'Index'
                 st.write("Symbols with Current Price within ±1% range of the Weighted Bollinger Bands Media:")
-                st.table(df)
+                
+                def color_percentage(val):
+                    if val <= -0.51:
+                        color = 'green'
+                    elif -0.5 <= val <= 0.5:
+                        color = 'grey'
+                    elif val >= 0.51:
+                        color = 'red'
+                    else:
+                        color = 'black'
+                    return f'color: {color}'
+
+                styled_df = df.style.applymap(color_percentage, subset=['Percentage'])
+                st.table(styled_df)
+
+                # Option to download filtered DataFrame
+                csv = df.to_csv().encode('utf-8')
+                st.download_button(
+                    label="Download Filtered Data as CSV",
+                    data=csv,
+                    file_name='filtered_data.csv',
+                    mime='text/csv'
+                )
                 
                 # Option to print filtered DataFrame
                 if st.button("Print Filtered Data"):
-                    st.write(df)
+                    st.write(styled_df)
             else:
                 st.write("No Matches")
 
