@@ -233,7 +233,7 @@ def home():
                     if (symbol, '30m') in data and data[(symbol, '30m')] is not None:
                         current_price = data[(symbol, '30m')].indicators.get('close', 0)
                         lower_bound = weighted_bb_media * 0.95
-                        upper_bound = weighted_bb_media * 0.98
+                        upper_bound = weighted_bb_media * 1.05
                         if lower_bound <= current_price <= upper_bound:
                             percentage = ((current_price - weighted_bb_media) / weighted_bb_media) * 100
                             matches.append({
