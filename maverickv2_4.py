@@ -121,6 +121,7 @@ def main():
     
     if st.button("Calculate Momentum Scores"):
         results = []
+        error_symbols = []
         for symbol in symbols:
             data = {}
             for interval, weight in intervals.items():
@@ -128,17 +129,25 @@ def main():
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
                     data[interval] = analysis
                 except Exception as e:
-                    st.error(f"Error fetching data for {symbol} at interval {interval}: {e}")
                     data[interval] = None
             
-            weighted_score = sum(weight * calculate_momentum_score({interval: data[interval]}) for interval, weight in intervals.items())
-            results.append({"Symbol": symbol, "Momentum Score": weighted_score})
+            if all(value is None for value in data.values()):
+                error_symbols.append(symbol)
+            else:
+                weighted_score = sum(weight * calculate_momentum_score({interval: data[interval]}) for interval, weight in intervals.items())
+                results.append({"Symbol": symbol, "Momentum Score": weighted_score})
         
-        results_df = pd.DataFrame(results)
-        top_20_symbols = results_df.sort_values(by="Momentum Score", ascending=False).head(20)
-        
-        st.write("Top 20 Symbols for Long Position:")
-        st.table(top_20_symbols)
+        if results:
+            results_df = pd.DataFrame(results)
+            top_20_symbols = results_df.sort_values(by="Momentum Score", ascending=False).head(20)
+            
+            st.write("Top 20 Symbols for Long Position:")
+            st.table(top_20_symbols)
+        else:
+            st.write("No data could be fetched for the provided symbols.")
+
+        if error_symbols:
+            st.write(f"Could not fetch data for the following symbols: {', '.join(error_symbols)}")
 
 if __name__ == "__main__":
     main()
