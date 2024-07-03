@@ -3,6 +3,7 @@ import pandas as pd
 from tradingview_ta import TA_Handler, Interval
 import io
 import numpy as np
+from scipy.stats import pearsonr
 
 # Set the page config
 st.set_page_config(
@@ -124,28 +125,29 @@ def calculate_momentum_score(data, correlations):
 
 # Calculate Pearson correlations dynamically
 def calculate_correlations(data):
-    # Ensure there are no empty lists and handle cases where data is insufficient
-    data = [x for x in data if len(x) > 0]
-    if len(data) < 2:
-        # Return equal weights if insufficient data for correlation
-        return {interval: 1 / len(intervals) for interval in intervals}
-    
     try:
+        # Ensure there are no empty lists and handle cases where data is insufficient
+        data = [x for x in data if len(x) > 0]
+        if len(data) < 2:
+            # Return equal weights if insufficient data for correlation
+            return {interval: 1 / len(intervals) for interval in intervals}
+        
         # Convert recommendation strings to numeric values
         numeric_data = [[recommendation_map.get(rec, 0) for rec in interval_data] for interval_data in data]
         
         # Create a matrix where rows are different intervals and columns are symbols
-        data_matrix = np.array(numeric_data)
-        if data_matrix.ndim == 1:  # handle single row case
-            data_matrix = data_matrix.reshape(1, -1)
-        
-        correlation_matrix = np.corrcoef(data_matrix, rowvar=False)
+        data_matrix = np.array(numeric_data).T
         
         correlations = {}
         for i, interval in enumerate(intervals):
-            if i < correlation_matrix.shape[0]:
-                correlations[interval] = np.mean(correlation_matrix[i, :])
+            if i < data_matrix.shape[1]:
+                for j, compare_interval in enumerate(intervals):
+                    if i != j and j < data_matrix.shape[1]:
+                        # Calculate Pearson correlation
+                        corr, _ = pearsonr(data_matrix[:, i], data_matrix[:, j])
+                        correlations[interval] = correlations.get(interval, 0) + corr
         
+        # Normalize the correlations
         total_correlation = sum(correlations.values())
         normalized_correlations = {k: v / total_correlation for k, v in correlations.items()}
         return normalized_correlations
