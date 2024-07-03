@@ -139,7 +139,7 @@ def calculate_correlations(data):
         if data_matrix.ndim == 1:  # handle single row case
             data_matrix = data_matrix.reshape(1, -1)
         correlation_matrix = np.corrcoef(data_matrix, rowvar=False)
-        correlations = {interval: np.mean(correlation_matrix[:, i]) for i, interval in enumerate(intervals)}
+        correlations = {intervals[i]: np.mean(correlation_matrix[:, i]) for i in range(len(data_matrix))}
         total_correlation = sum(correlations.values())
         normalized_correlations = {k: v / total_correlation for k, v in correlations.items()}
         return normalized_correlations
