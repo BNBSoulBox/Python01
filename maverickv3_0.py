@@ -127,7 +127,7 @@ def calculate_momentum_score(data, correlations):
 def calculate_correlations(data):
     try:
         # Ensure there are no empty lists and handle cases where data is insufficient
-        data = [x for x in data if len(x) > 0]
+        data = [x for x in data if len(x) > 1]
         if len(data) < 2:
             # Return equal weights if insufficient data for correlation
             return {interval: 1 / len(intervals) for interval in intervals}
@@ -143,9 +143,10 @@ def calculate_correlations(data):
             if i < data_matrix.shape[1]:
                 for j, compare_interval in enumerate(intervals):
                     if i != j and j < data_matrix.shape[1]:
-                        # Calculate Pearson correlation
-                        corr, _ = pearsonr(data_matrix[:, i], data_matrix[:, j])
-                        correlations[interval] = correlations.get(interval, 0) + corr
+                        # Calculate Pearson correlation if there are enough data points
+                        if len(data_matrix[:, i]) > 1 and len(data_matrix[:, j]) > 1:
+                            corr, _ = pearsonr(data_matrix[:, i], data_matrix[:, j])
+                            correlations[interval] = correlations.get(interval, 0) + corr
         
         # Normalize the correlations
         total_correlation = sum(correlations.values())
