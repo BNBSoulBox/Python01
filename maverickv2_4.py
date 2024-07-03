@@ -111,13 +111,17 @@ def calculate_momentum_score(data):
 def main():
     st.title('Crypto Momentum Score Analysis')
     
-    exchange = "BINANCE"
+    exchange = "BYBIT"
     screener = "crypto"
     intervals = {
+        Interval.INTERVAL_1_MINUTE: 0.1,
+        Interval.INTERVAL_5_MINUTES: 0.1,
         Interval.INTERVAL_15_MINUTES: 0.2,
-        Interval.INTERVAL_1_HOUR: 0.3,
-        Interval.INTERVAL_4_HOURS: 0.3,
-        Interval.INTERVAL_1_DAY: 0.2
+        Interval.INTERVAL_30_MINUTES: 0.1,
+        Interval.INTERVAL_1_HOUR: 0.2,
+        Interval.INTERVAL_2_HOURS: 0.1,
+        Interval.INTERVAL_4_HOURS: 0.1,
+        Interval.INTERVAL_1_DAY: 0.1
     }
     
     if st.button("Calculate Momentum Scores"):
