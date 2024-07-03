@@ -144,7 +144,7 @@ def calculate_correlations(data):
         correlations = {}
         for i, interval in enumerate(intervals):
             if i < correlation_matrix.shape[0]:
-                correlations[interval] = np.mean(correlation_matrix[:, i])
+                correlations[interval] = np.mean(correlation_matrix[i, :])
         
         total_correlation = sum(correlations.values())
         normalized_correlations = {k: v / total_correlation for k, v in correlations.items()}
