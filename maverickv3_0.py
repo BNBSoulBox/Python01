@@ -123,19 +123,22 @@ def calculate_momentum_score(data, correlations):
 # Calculate Pearson correlations dynamically
 def calculate_correlations(data):
     # Ensure there are no empty lists and handle cases where data is insufficient
-    data = [x for x in data if x]
+    data = [x for x in data if len(x) > 0]
     if len(data) < 2:
         # Return equal weights if insufficient data for correlation
         return {interval: 1 / len(intervals) for interval in intervals}
     
-    # Create a matrix where rows are different intervals and columns are symbols
-    data_matrix = np.array(data).T
-    correlation_matrix = np.corrcoef(data_matrix, rowvar=False)
-    
-    correlations = {interval: np.mean(correlation_matrix[i]) for i, interval in enumerate(intervals)}
-    total_correlation = sum(correlations.values())
-    normalized_correlations = {k: v / total_correlation for k, v in correlations.items()}
-    return normalized_correlations
+    try:
+        # Create a matrix where rows are different intervals and columns are symbols
+        data_matrix = np.array(data).T
+        correlation_matrix = np.corrcoef(data_matrix, rowvar=False)
+        correlations = {interval: np.mean(correlation_matrix[i]) for i, interval in enumerate(intervals)}
+        total_correlation = sum(correlations.values())
+        normalized_correlations = {k: v / total_correlation for k, v in correlations.items()}
+        return normalized_correlations
+    except Exception as e:
+        st.error(f"Error in calculating correlations: {e}")
+        return {interval: 1 / len(intervals) for interval in intervals}
 
 # Main function
 def main():
@@ -154,8 +157,9 @@ def main():
             for interval in intervals:
                 try:
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
-                    data[interval] = analysis
-                    all_data[interval].append(analysis.summary['RECOMMENDATION'].upper())
+                    if analysis:
+                        data[interval] = analysis
+                        all_data[interval].append(analysis.summary['RECOMMENDATION'].upper())
                 except Exception as e:
                     data[interval] = None
             
