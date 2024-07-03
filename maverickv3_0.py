@@ -1,8 +1,8 @@
-import pandas as pd
-import numpy as np
-from tradingview_ta import TA_Handler, Interval
 import streamlit as st
+import pandas as pd
+from tradingview_ta import TA_Handler, Interval
 import io
+import numpy as np
 
 # Set the page config
 st.set_page_config(
@@ -86,48 +86,121 @@ symbols = [
     "ZECUSDT.P", "ZENUSDT.P", "ZILUSDT.P", "ZRXUSDT.P"
 ]
 
+# Define intervals
+intervals = [
+    Interval.INTERVAL_1_MINUTE,
+    Interval.INTERVAL_5_MINUTES,
+    Interval.INTERVAL_15_MINUTES,
+    Interval.INTERVAL_30_MINUTES,
+    Interval.INTERVAL_1_HOUR,
+    Interval.INTERVAL_2_HOURS,
+    Interval.INTERVAL_4_HOURS,
+    Interval.INTERVAL_1_DAY
+]
+
+# Map recommendation to numeric value
+recommendation_map = {'STRONG_BUY': 2, 'BUY': 1, 'NEUTRAL': 0, 'SELL': -1, 'STRONG_SELL': -2}
+
+# Fetch data function
+def fetch_all_data(symbol, exchange, screener, interval):
+    handler = TA_Handler(
+        symbol=symbol,
+        exchange=exchange,
+        screener=screener,
+        interval=interval,
+        timeout=None
+    )
+    analysis = handler.get_analysis()
+    return analysis
+
+# Calculate momentum score function
+def calculate_momentum_score(data, correlations):
+    score = 0
+    for interval, analysis in data.items():
+        if analysis:
+            rating = analysis.summary['RECOMMENDATION'].upper()
+            score += correlations.get(interval, 0) * recommendation_map.get(rating, 0)
+    return score
+
+# Calculate Pearson correlations dynamically
 def calculate_correlations(data):
-    data_matrix = np.array(data)
-    correlation_matrix = np.corrcoef(data_matrix, rowvar=False)
-    return correlation_matrix
+    # Ensure there are no empty lists and handle cases where data is insufficient
+    data = [x for x in data if len(x) > 0]
+    if len(data) < 2:
+        # Return equal weights if insufficient data for correlation
+        return {interval: 1 / len(intervals) for interval in intervals}
+    
+    try:
+        # Convert recommendation strings to numeric values
+        numeric_data = [[recommendation_map.get(rec, 0) for rec in interval_data] for interval_data in data]
+        
+        # Create a matrix where rows are different intervals and columns are symbols
+        data_matrix = np.array(numeric_data).T
+        correlation_matrix = np.corrcoef(data_matrix, rowvar=False)
+        correlations = {interval: np.mean(correlation_matrix[i]) for i, interval in enumerate(intervals)}
+        total_correlation = sum(correlations.values())
+        normalized_correlations = {k: v / total_correlation for k, v in correlations.items()}
+        return normalized_correlations
+    except Exception as e:
+        st.error(f"Error in calculating correlations: {e}")
+        return {interval: 1 / len(intervals) for interval in intervals}
 
-# Upload data file
-uploaded_file = st.file_uploader("Upload your data file", type=["txt", "csv"])
-
-if uploaded_file is not None:
-    # Read the uploaded file
-    raw_data = uploaded_file.read().decode("utf-8").split("\n")
-    all_data = {}
-    intervals = ["5m", "15m", "30m", "1h", "2h", "4h", "1d"]
-
-    for symbol in symbols:
-        all_data[symbol] = {interval: [] for interval in intervals}
-
-    for line in raw_data:
-        parts = line.split("\t")
-        if len(parts) > 4:
-            symbol, interval, category, indicator, value = parts
-            if symbol in all_data and interval in all_data[symbol]:
-                all_data[symbol][interval].append((category, indicator, value))
-
-    # Calculate correlations and display results
-    for symbol in symbols:
-        filtered_data = []
-        for interval in intervals:
-            interval_data = all_data[symbol][interval]
-            if interval_data:
-                interval_values = [float(value[-1]) if value[-1].replace('.', '', 1).isdigit() else 0 for _, _, value in interval_data]
-                filtered_data.append(interval_values)
-
-        if filtered_data:
-            try:
+# Main function
+def main():
+    st.title('Crypto Momentum Score Analysis')
+    
+    exchange = "BYBIT"
+    screener = "crypto"
+    
+    if st.button("Calculate Momentum Scores"):
+        results = []
+        error_symbols = []
+        all_data = {interval: [] for interval in intervals}
+        
+        for symbol in symbols:
+            data = {}
+            for interval in intervals:
+                try:
+                    analysis = fetch_all_data(symbol, exchange, screener, interval)
+                    if analysis:
+                        data[interval] = analysis
+                        all_data[interval].append(analysis.summary['RECOMMENDATION'].upper())
+                except Exception as e:
+                    data[interval] = None
+            
+            if all(value is None for value in data.values()):
+                error_symbols.append(symbol)
+            else:
+                # Prepare data for correlation calculation
+                filtered_data = [list(filter(None, all_data[interval])) for interval in intervals]
                 correlations = calculate_correlations(filtered_data)
-                st.write(f"Correlations for {symbol}:", correlations)
-            except Exception as e:
-                st.write(f"Error in calculating correlations for {symbol}: {e}")
+                momentum_score = calculate_momentum_score(data, correlations)
+                results.append({"Symbol": symbol, "Momentum Score": momentum_score})
+        
+        if results:
+            results_df = pd.DataFrame(results)
+            results_df.index += 1  # Number the first column in ascending order
+            results_df.index.name = 'Index'
+            top_20_symbols = results_df.sort_values(by="Momentum Score", ascending=False).head(20)
+            
+            st.write("Top 20 Symbols for Long Position:")
+            st.table(top_20_symbols)
 
-# Adding the VIP AI Discord invitation
-st.markdown("""
-    **Thank you for your engagement!** If you'd like to join our VIP AI community, please visit our [Discord server](https://discord.gg/smartprompt). 
-    It's a hub for AI news, and in the future, it will offer custom prompts for passive income opportunities with business automation.
-""")
+            # Provide the option to download the full results as a CSV file
+            csv_buffer = io.StringIO()
+            results_df.to_csv(csv_buffer)
+            csv_data = csv_buffer.getvalue()
+            st.download_button(
+                label="Download Momentum Scores as CSV",
+                data=csv_data,
+                file_name='momentum_scores.csv',
+                mime='text/csv'
+            )
+        else:
+            st.write("No data could be fetched for the provided symbols.")
+
+        if error_symbols:
+            st.write(f"Could not fetch data for the following symbols: {', '.join(error_symbols)}")
+
+if __name__ == "__main__":
+    main()
