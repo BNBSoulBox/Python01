@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from tradingview_ta import TA_Handler, Interval
+import io
 
 # Set the page config
 st.set_page_config(
@@ -139,10 +140,23 @@ def main():
         
         if results:
             results_df = pd.DataFrame(results)
+            results_df.index += 1  # Number the first column in ascending order
+            results_df.index.name = 'Index'
             top_20_symbols = results_df.sort_values(by="Momentum Score", ascending=False).head(20)
             
             st.write("Top 20 Symbols for Long Position:")
             st.table(top_20_symbols)
+
+            # Provide the option to download the full results as a CSV file
+            csv_buffer = io.StringIO()
+            results_df.to_csv(csv_buffer)
+            csv_data = csv_buffer.getvalue()
+            st.download_button(
+                label="Download Momentum Scores as CSV",
+                data=csv_data,
+                file_name='momentum_scores.csv',
+                mime='text/csv'
+            )
         else:
             st.write("No data could be fetched for the provided symbols.")
 
