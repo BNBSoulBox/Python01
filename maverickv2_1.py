@@ -36,7 +36,12 @@ def preprocess_data(df):
     if 'Fecha' not in df.columns:
         raise KeyError("The required column 'Fecha' is missing from the data.")
     try:
-        df['timestamp'] = pd.to_datetime(df['Fecha'], format='%m/%d/%Y %H:%M')
+        df['timestamp'] = pd.to_datetime(df['Fecha'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
+        # Handle any rows where parsing failed
+        if df['timestamp'].isnull().any():
+            st.warning("Some date formats did not match the expected format and were parsed as NaT.")
+            st.write(df[df['timestamp'].isnull()]['Fecha'].head())
+            df.dropna(subset=['timestamp'], inplace=True)
     except Exception as e:
         st.error(f"Error parsing dates: {e}")
         st.write("Here are the first few 'Fecha' values for reference:")
