@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 from tradingview_ta import TA_Handler, Interval
 import io
-import numpy as np
-from scipy.stats import pearsonr
+from datetime import datetime
 
 # Set the page config
 st.set_page_config(
-    page_title="Trading Analysis",
+    page_title="Análisis de Trading",
     page_icon="🪙",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -87,21 +86,6 @@ symbols = [
     "ZECUSDT.P", "ZENUSDT.P", "ZILUSDT.P", "ZRXUSDT.P"
 ]
 
-# Define intervals
-intervals = [
-    Interval.INTERVAL_1_MINUTE,
-    Interval.INTERVAL_5_MINUTES,
-    Interval.INTERVAL_15_MINUTES,
-    Interval.INTERVAL_30_MINUTES,
-    Interval.INTERVAL_1_HOUR,
-    Interval.INTERVAL_2_HOURS,
-    Interval.INTERVAL_4_HOURS,
-    Interval.INTERVAL_1_DAY
-]
-
-# Map recommendation to numeric value
-recommendation_map = {'STRONG_BUY': 2, 'BUY': 1, 'NEUTRAL': 0, 'SELL': -1, 'STRONG_SELL': -2}
-
 # Fetch data function
 def fetch_all_data(symbol, exchange, screener, interval):
     handler = TA_Handler(
@@ -115,103 +99,97 @@ def fetch_all_data(symbol, exchange, screener, interval):
     return analysis
 
 # Calculate momentum score function
-def calculate_momentum_score(data, correlations):
+def calculate_momentum_score(data):
+    weights = {'STRONG_BUY': 2, 'BUY': 1, 'NEUTRAL': 0, 'SELL': -1, 'STRONG_SELL': -2}
     score = 0
     for interval, analysis in data.items():
         if analysis:
             rating = analysis.summary['RECOMMENDATION'].upper()
-            score += correlations.get(interval, 0) * recommendation_map.get(rating, 0)
+            score += weights.get(rating, 0)
     return score
-
-# Calculate Pearson correlations dynamically
-def calculate_correlations(data):
-    try:
-        # Ensure there are no empty lists and handle cases where data is insufficient
-        data = [x for x in data if len(x) > 1]
-        if len(data) < 2:
-            # Return equal weights if insufficient data for correlation
-            return {interval: 1 / len(intervals) for interval in intervals}
-        
-        # Convert recommendation strings to numeric values
-        numeric_data = [[recommendation_map.get(rec, 0) for rec in interval_data] for interval_data in data]
-        
-        # Create a matrix where rows are different intervals and columns are symbols
-        data_matrix = np.array(numeric_data).T
-        
-        correlations = {}
-        for i, interval in enumerate(intervals):
-            if i < data_matrix.shape[1]:
-                for j, compare_interval in enumerate(intervals):
-                    if i != j and j < data_matrix.shape[1]:
-                        # Calculate Pearson correlation if there are enough data points
-                        if len(data_matrix[:, i]) > 1 and len(data_matrix[:, j]) > 1:
-                            corr, _ = pearsonr(data_matrix[:, i], data_matrix[:, j])
-                            correlations[interval] = correlations.get(interval, 0) + corr
-        
-        # Normalize the correlations
-        total_correlation = sum(correlations.values())
-        normalized_correlations = {k: v / total_correlation for k, v in correlations.items()}
-        return normalized_correlations
-    except Exception as e:
-        st.error(f"Error in calculating correlations: {e}")
-        return {interval: 1 / len(intervals) for interval in intervals}
 
 # Main function
 def main():
-    st.title('Crypto Momentum Score Analysis')
+    st.title('Análisis de Puntuación de Momentum en Criptomonedas')
     
     exchange = "BYBIT"
     screener = "crypto"
+    intervals = {
+        Interval.INTERVAL_1_MINUTE: 0.1,
+        Interval.INTERVAL_5_MINUTES: 0.1,
+        Interval.INTERVAL_15_MINUTES: 0.2,
+        Interval.INTERVAL_30_MINUTES: 0.1,
+        Interval.INTERVAL_1_HOUR: 0.2,
+        Interval.INTERVAL_2_HOURS: 0.1,
+        Interval.INTERVAL_4_HOURS: 0.1,
+        Interval.INTERVAL_1_DAY: 0.1
+    }
     
-    if st.button("Calculate Momentum Scores"):
-        results = []
+    if st.button("Calcular Puntuaciones de Momentum"):
+        results_long = []
+        results_short = []
         error_symbols = []
-        all_data = {interval: [] for interval in intervals}
+        current_date = datetime.now().strftime("%Y-%m-%d")
         
         for symbol in symbols:
             data = {}
-            for interval in intervals:
+            for interval, weight in intervals.items():
                 try:
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
-                    if analysis:
-                        data[interval] = analysis
-                        all_data[interval].append(analysis.summary['RECOMMENDATION'].upper())
+                    data[interval] = analysis
                 except Exception as e:
                     data[interval] = None
             
             if all(value is None for value in data.values()):
                 error_symbols.append(symbol)
             else:
-                # Prepare data for correlation calculation
-                filtered_data = [list(filter(None, all_data[interval])) for interval in intervals]
-                correlations = calculate_correlations(filtered_data)
-                momentum_score = calculate_momentum_score(data, correlations)
-                results.append({"Symbol": symbol, "Momentum Score": momentum_score})
+                weighted_score = sum(weight * calculate_momentum_score({interval: data[interval]}) for interval, weight in intervals.items())
+                if weighted_score > 0:
+                    results_long.append({"Symbol": symbol, "Momentum Score": weighted_score, "Fecha": current_date})
+                else:
+                    results_short.append({"Symbol": symbol, "Momentum Score": weighted_score, "Fecha": current_date})
         
-        if results:
-            results_df = pd.DataFrame(results)
-            results_df.index += 1  # Number the first column in ascending order
-            results_df.index.name = 'Index'
-            top_20_symbols = results_df.sort_values(by="Momentum Score", ascending=False).head(20)
+        if results_long:
+            results_long_df = pd.DataFrame(results_long)
+            results_long_df.index += 1  # Numerar la primera columna en orden ascendente
+            results_long_df.index.name = 'Índice'
+            top_20_long_symbols = results_long_df.sort_values(by="Momentum Score", ascending=False).head(20)
             
-            st.write("Top 20 Symbols for Long Position:")
-            st.table(top_20_symbols)
+            st.write("Top 20 Símbolos para Posición Larga:")
+            st.table(top_20_long_symbols)
 
-            # Provide the option to download the full results as a CSV file
+        if results_short:
+            results_short_df = pd.DataFrame(results_short)
+            results_short_df.index += 1  # Numerar la primera columna en orden ascendente
+            results_short_df.index.name = 'Índice'
+            top_20_short_symbols = results_short_df.sort_values(by="Momentum Score", ascending=True).head(20)
+            
+            st.write("Top 20 Símbolos para Posición Corta:")
+            st.table(top_20_short_symbols)
+
+        # Mostrar promedio total de puntuaciones de momentum
+        all_scores = results_long + results_short
+        if all_scores:
+            avg_momentum_score = sum(item['Momentum Score'] for item in all_scores) / len(all_scores)
+            st.write(f"Promedio Total de Puntuaciones de Momentum: {avg_momentum_score:.2f}")
+
+        # Opción para descargar los resultados completos como archivo CSV
+        if all_scores:
+            all_results_df = pd.DataFrame(all_scores)
             csv_buffer = io.StringIO()
-            results_df.to_csv(csv_buffer)
+            all_results_df.to_csv(csv_buffer)
             csv_data = csv_buffer.getvalue()
             st.download_button(
-                label="Download Momentum Scores as CSV",
+                label="Descargar Puntuaciones de Momentum como CSV",
                 data=csv_data,
                 file_name='momentum_scores.csv',
                 mime='text/csv'
             )
         else:
-            st.write("No data could be fetched for the provided symbols.")
+            st.write("No se pudieron obtener datos para los símbolos proporcionados.")
 
         if error_symbols:
-            st.write(f"Could not fetch data for the following symbols: {', '.join(error_symbols)}")
+            st.write(f"No se pudieron obtener datos para los siguientes símbolos: {', '.join(error_symbols)}")
 
 if __name__ == "__main__":
     main()
