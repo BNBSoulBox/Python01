@@ -35,7 +35,13 @@ def load_data(files):
 def preprocess_data(df):
     if 'Fecha' not in df.columns:
         raise KeyError("The required column 'Fecha' is missing from the data.")
-    df['timestamp'] = pd.to_datetime(df['Fecha'], format='%m/%d/%Y %H:%M')
+    try:
+        df['timestamp'] = pd.to_datetime(df['Fecha'], format='%m/%d/%Y %H:%M')
+    except Exception as e:
+        st.error(f"Error parsing dates: {e}")
+        st.write("Here are the first few 'Fecha' values for reference:")
+        st.write(df['Fecha'].head())
+        raise e
     df.set_index('timestamp', inplace=True)
     df.fillna(method='ffill', inplace=True)
     return df
