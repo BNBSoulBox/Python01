@@ -2,3 +2,7 @@ tradingview_ta
 discord-webhook
 scipy
 ta
+scikit-learn 
+pandas 
+numpy
+matplotlib
