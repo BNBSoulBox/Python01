@@ -114,11 +114,11 @@ if uploaded_files:
         data['rf_pred'] = rf_model.predict(scaler.transform(data[['return', 'volatility', 'momentum']].fillna(0)))
         data['lr_pred'] = lr_model.predict(scaler.transform(data[['return', 'volatility', 'momentum']].fillna(0)))
         data['signal'] = np.where(data['rf_pred'] > data['Momentum Score'], 1, -1)  # Buy signal if prediction > current price
-        st.write("Arbitrage Signals", data[['Momentum Score', 'rf_pred', 'lr_pred', 'signal']])
+        st.write("Arbitrage Signals", data[['Symbol', 'Momentum Score', 'rf_pred', 'lr_pred', 'signal']])
 
         # Option to download the results
         csv_buffer = io.StringIO()
-        data.to_csv(csv_buffer)
+        data[['Symbol', 'Momentum Score', 'rf_pred', 'lr_pred', 'signal']].to_csv(csv_buffer)
         csv_data = csv_buffer.getvalue()
         st.download_button(
             label="Download Arbitrage Signals as CSV",
