@@ -129,7 +129,7 @@ def main():
         results_long = []
         results_short = []
         error_symbols = []
-        current_date = datetime.now().strftime("%Y-%m-%d")
+        current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         for symbol in symbols:
             data = {}
@@ -145,9 +145,9 @@ def main():
             else:
                 weighted_score = sum(weight * calculate_momentum_score({interval: data[interval]}) for interval, weight in intervals.items())
                 if weighted_score > 0:
-                    results_long.append({"Symbol": symbol, "Momentum Score": weighted_score, "Fecha": current_date})
+                    results_long.append({"Symbol": symbol, "Momentum Score": weighted_score, "Fecha": current_datetime})
                 else:
-                    results_short.append({"Symbol": symbol, "Momentum Score": weighted_score, "Fecha": current_date})
+                    results_short.append({"Symbol": symbol, "Momentum Score": weighted_score, "Fecha": current_datetime})
         
         if results_long:
             results_long_df = pd.DataFrame(results_long)
