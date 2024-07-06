@@ -113,12 +113,22 @@ if uploaded_files:
         # Arbitrage Detection
         data['rf_pred'] = rf_model.predict(scaler.transform(data[['return', 'volatility', 'momentum']].fillna(0)))
         data['lr_pred'] = lr_model.predict(scaler.transform(data[['return', 'volatility', 'momentum']].fillna(0)))
+        
+        # Calculate the differences as percentages
+        data['rf_diff'] = np.abs(data['Momentum Score'] - data['rf_pred']) / data['Momentum Score'] * 100
+        data['lr_diff'] = np.abs(data['Momentum Score'] - data['lr_pred']) / data['Momentum Score'] * 100
+        data['diff %'] = np.abs(data['rf_diff'] - data['lr_diff'])
+        
         data['signal'] = np.where(data['rf_pred'] > data['Momentum Score'], 1, -1)  # Buy signal if prediction > current price
-        st.write("Arbitrage Signals", data[['Symbol', 'Momentum Score', 'rf_pred', 'lr_pred', 'signal']])
+        
+        # Sort by the smallest percentage difference and select top 20 results for display
+        display_data = data.sort_values(by=['rf_diff', 'lr_diff', 'diff %']).head(20)
+        
+        st.write("Top 20 Arbitrage Signals", display_data[['Symbol', 'Momentum Score', 'rf_pred', 'lr_pred', 'rf_diff', 'lr_diff', 'diff %', 'signal']])
 
         # Option to download the results
         csv_buffer = io.StringIO()
-        data[['Symbol', 'Momentum Score', 'rf_pred', 'lr_pred', 'signal']].to_csv(csv_buffer)
+        display_data[['Symbol', 'Momentum Score', 'rf_pred', 'lr_pred', 'rf_diff', 'lr_diff', 'diff %', 'signal']].to_csv(csv_buffer)
         csv_data = csv_buffer.getvalue()
         st.download_button(
             label="Download Arbitrage Signals as CSV",
