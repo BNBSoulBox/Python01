@@ -8,10 +8,15 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 import io
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
-from datetime import datetime
+
+# Check TensorFlow installation
+try:
+    import tensorflow as tf
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import LSTM, Dense
+except ImportError as e:
+    st.error("TensorFlow is not installed correctly. Please ensure you have TensorFlow installed in your environment.")
+    raise e
 
 # Set the page config
 st.set_page_config(page_title="Crypto Arbitrage Analysis", page_icon="🪙", layout="wide", initial_sidebar_state="expanded")
@@ -152,7 +157,7 @@ if uploaded_files:
         data['lr_diff'] = np.abs(data['Momentum Score'] - data['lr_pred'])
         data['lstm_diff'] = np.abs(data['Momentum Score'] - data['lstm_pred'])
         
-        data['signal'] = np.where(data['lstm_pred'] > data['Momentum Score'], 1, -1)  # Buy signal if LSTM prediction > current price
+        data['signal'] = np.where(data['lstm_pred'] > data['Momentum Score'], 1, -1)  # Buy signal if prediction > current price
         
         # Filter by the latest date and then sort by the smallest difference to select top 20 results
         latest_date = data.index.max()
