@@ -9,14 +9,16 @@ from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 import io
 
-# Check TensorFlow installation
 try:
     import tensorflow as tf
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.layers import LSTM, Dense
 except ImportError as e:
-    st.error("TensorFlow is not installed correctly. Please ensure you have TensorFlow installed in your environment.")
-    raise e
+    st.error(f"TensorFlow import error: {e}")
+    st.stop()
+except Exception as e:
+    st.error(f"Unexpected error during TensorFlow import: {e}")
+    st.stop()
 
 # Set the page config
 st.set_page_config(page_title="Crypto Arbitrage Analysis", page_icon="🪙", layout="wide", initial_sidebar_state="expanded")
@@ -46,6 +48,7 @@ def preprocess_data(df):
         raise KeyError("The required column 'Fecha' is missing from the data.")
     try:
         df['timestamp'] = pd.to_datetime(df['Fecha'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
+        # Handle any rows where parsing failed
         if df['timestamp'].isnull().any():
             st.warning("Some date formats did not match the expected format and were parsed as NaT.")
             st.write(df[df['timestamp'].isnull()]['Fecha'].head())
@@ -58,14 +61,6 @@ def preprocess_data(df):
     df.set_index('timestamp', inplace=True)
     df.fillna(method='ffill', inplace=True)
     return df
-
-# Function to create LSTM sequences
-def create_lstm_sequences(data, time_steps=30):
-    X, y = [], []
-    for i in range(len(data) - time_steps):
-        X.append(data[i:i + time_steps])
-        y.append(data[i + time_steps, 0])
-    return np.array(X), np.array(y)
 
 # Upload CSV files
 uploaded_files = st.file_uploader("Upload CSV files", accept_multiple_files=True, type="csv")
@@ -87,50 +82,32 @@ if uploaded_files:
         st.write("Feature Engineered Data", data)
 
         # Train-test split
-        X = data[['return', 'volatility', 'momentum']].values
-        y = data['Momentum Score'].shift(-1).dropna().values
+        X = data[['return', 'volatility', 'momentum']]
+        y = data['Momentum Score'].shift(-1).dropna()
         X = X[:-1]  # Align features with target
 
-        # Prepare LSTM data
-        time_steps = 30
-        X_lstm, y_lstm = create_lstm_sequences(X, time_steps)
-        X_train_lstm, X_test_lstm, y_train_lstm, y_test_lstm = train_test_split(X_lstm, y_lstm, test_size=0.2, random_state=42)
-
-        # Scaling for LSTM
-        scaler = StandardScaler()
-        X_train_scaled_lstm = scaler.fit_transform(X_train_lstm.reshape(-1, X_train_lstm.shape[-1])).reshape(X_train_lstm.shape)
-        X_test_scaled_lstm = scaler.transform(X_test_lstm.reshape(-1, X_test_lstm.shape[-1])).reshape(X_test_lstm.shape)
-
-        # LSTM Model
-        lstm_model = Sequential([
-            LSTM(50, return_sequences=True, input_shape=(time_steps, X_train_scaled_lstm.shape[2])),
-            LSTM(50),
-            Dense(1)
-        ])
-        lstm_model.compile(optimizer='adam', loss='mse')
-        lstm_model.fit(X_train_scaled_lstm, y_train_lstm, epochs=50, batch_size=32, validation_data=(X_test_scaled_lstm, y_test_lstm))
-
-        # LSTM Predictions
-        y_pred_lstm = lstm_model.predict(X_test_scaled_lstm)
-        lstm_mse = mean_squared_error(y_test_lstm, y_pred_lstm)
-
-        st.write(f"LSTM Mean Squared Error: {lstm_mse}")
-
-        # Scaling for other models
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        # Scaling
+        scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
+
+        # Model Training
+        st.write("Training Models...")
 
         # Random Forest Model
         rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
         rf_model.fit(X_train_scaled, y_train)
         y_pred_rf = rf_model.predict(X_test_scaled)
-        rf_mse = mean_squared_error(y_test, y_pred_rf)
 
         # Linear Regression Model
         lr_model = LinearRegression()
         lr_model.fit(X_train_scaled, y_train)
         y_pred_lr = lr_model.predict(X_test_scaled)
+
+        # Evaluation
+        rf_mse = mean_squared_error(y_test, y_pred_rf)
         lr_mse = mean_squared_error(y_test, y_pred_lr)
 
         st.write(f"Random Forest MSE: {rf_mse}")
@@ -138,20 +115,43 @@ if uploaded_files:
 
         # Visualization
         plt.figure(figsize=(10, 5))
-        plt.plot(y_test, label='Actual')
-        plt.plot(y_pred_rf, label='Random Forest Predictions')
-        plt.plot(y_pred_lr, label='Linear Regression Predictions')
-        plt.plot(y_pred_lstm, label='LSTM Predictions')
+        plt.plot(y_test.index, y_test, label='Actual')
+        plt.plot(y_test.index, y_pred_rf, label='Random Forest Predictions')
+        plt.plot(y_test.index, y_pred_lr, label='Linear Regression Predictions')
         plt.legend()
         st.pyplot(plt)
 
-        # Arbitrage Detection with LSTM
-        lstm_input_data = scaler.transform(data[['return', 'volatility', 'momentum']].values[-time_steps:])
-        lstm_input_data = lstm_input_data.reshape((1, time_steps, lstm_input_data.shape[1]))
-        data['lstm_pred'] = lstm_model.predict(lstm_input_data).flatten()
+        # Adding LSTM Model
+        X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], X_train_scaled.shape[1], 1))
+        X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], X_test_scaled.shape[1], 1))
+        
+        lstm_model = Sequential([
+            LSTM(50, return_sequences=True, input_shape=(X_train_lstm.shape[1], 1)),
+            LSTM(50),
+            Dense(1)
+        ])
+        lstm_model.compile(optimizer='adam', loss='mse')
+        lstm_model.fit(X_train_lstm, y_train, epochs=50, batch_size=32, validation_data=(X_test_lstm, y_test))
 
+        y_pred_lstm = lstm_model.predict(X_test_lstm)
+        lstm_mse = mean_squared_error(y_test, y_pred_lstm)
+        
+        st.write(f"LSTM Model MSE: {lstm_mse}")
+
+        # Visualization with LSTM
+        plt.figure(figsize=(10, 5))
+        plt.plot(y_test.index, y_test, label='Actual')
+        plt.plot(y_test.index, y_pred_rf, label='Random Forest Predictions')
+        plt.plot(y_test.index, y_pred_lr, label='Linear Regression Predictions')
+        plt.plot(y_test.index, y_pred_lstm, label='LSTM Predictions')
+        plt.legend()
+        st.pyplot(plt)
+
+        # Arbitrage Detection
         data['rf_pred'] = rf_model.predict(scaler.transform(data[['return', 'volatility', 'momentum']].fillna(0)))
         data['lr_pred'] = lr_model.predict(scaler.transform(data[['return', 'volatility', 'momentum']].fillna(0)))
+        lstm_input = scaler.transform(data[['return', 'volatility', 'momentum']].fillna(0)).reshape((data.shape[0], 3, 1))
+        data['lstm_pred'] = lstm_model.predict(lstm_input).flatten()
         
         data['rf_diff'] = np.abs(data['Momentum Score'] - data['rf_pred'])
         data['lr_diff'] = np.abs(data['Momentum Score'] - data['lr_pred'])
@@ -162,21 +162,6 @@ if uploaded_files:
         # Filter by the latest date and then sort by the smallest difference to select top 20 results
         latest_date = data.index.max()
         recent_data = data[data.index.date == latest_date.date()]
-        display_data = recent_data.sort_values(by=['lstm_diff', 'rf_diff', 'lr_diff']).head(20)
+        display_data = recent_data.sort_values(by=['lstm_diff']).head(20)
         
-        st.write("Top 20 Arbitrage Signals", display_data[['Symbol', 'Momentum Score', 'lstm_pred', 'rf_pred', 'lr_pred', 'lstm_diff', 'rf_diff', 'lr_diff', 'signal']])
-
-        # Option to download the results
-        csv_buffer = io.StringIO()
-        display_data[['Symbol', 'Momentum Score', 'lstm_pred', 'rf_pred', 'lr_pred', 'lstm_diff', 'rf_diff', 'lr_diff', 'signal']].to_csv(csv_buffer)
-        csv_data = csv_buffer.getvalue()
-        st.download_button(
-            label="Download Arbitrage Signals as CSV",
-            data=csv_data,
-            file_name='arbitrage_signals.csv',
-            mime='text/csv'
-        )
-    except KeyError as e:
-        st.error(f"Data preprocessing error: {e}")
-else:
-    st.write("Please upload CSV files to start the analysis.")
+        st.write("Top 20 Arbitrage Signals",
