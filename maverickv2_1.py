@@ -119,8 +119,10 @@ if uploaded_files:
         
         data['signal'] = np.where(data['rf_pred'] > data['Momentum Score'], 1, -1)  # Buy signal if prediction > current price
         
-        # Sort by the smallest difference and select top 20 results for display, considering latest time first
-        display_data = data.sort_values(by=['timestamp'], ascending=False).sort_values(by=['rf_diff', 'lr_diff']).head(20)
+        # Filter by the latest date and then sort by the smallest difference to select top 20 results
+        latest_date = data.index.max()
+        recent_data = data[data.index.date == latest_date.date()]
+        display_data = recent_data.sort_values(by=['rf_diff', 'lr_diff']).head(20)
         
         st.write("Top 20 Arbitrage Signals", display_data[['Symbol', 'Momentum Score', 'rf_pred', 'lr_pred', 'rf_diff', 'lr_diff', 'signal']])
 
