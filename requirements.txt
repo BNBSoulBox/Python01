@@ -6,4 +6,4 @@ scikit-learn
 pandas 
 numpy
 matplotlib
-tensorflow
+tensorflow==2.9.0
