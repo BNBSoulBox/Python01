@@ -48,7 +48,7 @@ symbols = [
     "AUCTIONUSDT.P", "AUDIOUSDT.P", "AVAXUSDT.P", "AXSUSDT.P", "BADGERUSDT.P", 
     "BAKEUSDT.P", "BALUSDT.P", "BANDUSDT.P", "BATUSDT.P", "BCHUSDT.P", 
     "BELUSDT.P", "BICOUSDT.P", "BIGTIMEUSDT.P", "BITUSDT.P", "BLURUSDT.P", "BLZUSDT.P",
-    "BUSDUSDT.P", "C98USDT.P", "CEEKUSDT.P", "CELOUSDT.P", "CELRUSDT.P", "CFXUSDT.P",
+    "BUSDUSDT.P", "BTCUSDT.P", "C98USDT.P", "CEEKUSDT.P", "CELOUSDT.P", "CELRUSDT.P", "CFXUSDT.P",
     "CHRUSDT.P", "CHZUSDT.P", "CKBUSDT.P", "COCOSUSDT.P", "COMBOUSDT.P", "COMPUSDT.P",
     "COREUSDT.P", "COTIUSDT.P", "CREAMUSDT.P", "CROUSDT.P", "CRVUSDT.P", "CTCUSDT.P",
     "CTKUSDT.P", "CTSIUSDT.P", "CVCUSDT.P", "CVXUSDT.P", "CYBERUSDT.P", "DARUSDT.P",
@@ -107,34 +107,6 @@ def calculate_momentum_score(data):
             rating = analysis.summary['RECOMMENDATION'].upper()
             score += weights.get(rating, 0)
     return score
-
-# Function to get BTCUSDT.P momentum score
-def get_btc_momentum():
-    btc_symbol = "BTCUSDT.P"
-    exchange = "BYBIT"
-    screener = "crypto"
-    intervals = {
-        Interval.INTERVAL_1_MINUTE: 0.1,
-        Interval.INTERVAL_5_MINUTES: 0.1,
-        Interval.INTERVAL_15_MINUTES: 0.2,
-        Interval.INTERVAL_30_MINUTES: 0.1,
-        Interval.INTERVAL_1_HOUR: 0.2,
-        Interval.INTERVAL_2_HOURS: 0.1,
-        Interval.INTERVAL_4_HOURS: 0.1,
-        Interval.INTERVAL_1_DAY: 0.1
-    }
-    data = {}
-    for interval, weight in intervals.items():
-        try:
-            analysis = fetch_all_data(btc_symbol, exchange, screener, interval)
-            data[interval] = analysis
-        except Exception as e:
-            data[interval] = None
-    if all(value is None for value in data.values()):
-        return None
-    else:
-        weighted_score = sum(weight * calculate_momentum_score({interval: data[interval]}) for interval, weight in intervals.items())
-        return {"Symbol": btc_symbol, "Momentum Score": weighted_score, "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 # Main function
 def main():
@@ -204,6 +176,7 @@ def main():
         # Opción para descargar los resultados completos como archivo CSV
         if all_scores:
             all_results_df = pd.DataFrame(all_scores)
+            all_results_df['Promedio Total de Puntuaciones de Momentum'] = avg_momentum_score
             csv_buffer = io.StringIO()
             all_results_df.to_csv(csv_buffer)
             csv_data = csv_buffer.getvalue()
@@ -218,15 +191,6 @@ def main():
 
         if error_symbols:
             st.write(f"No se pudieron obtener datos para los siguientes símbolos: {', '.join(error_symbols)}")
-
-        # Display BTCUSDT.P momentum score
-        btc_momentum = get_btc_momentum()
-        if btc_momentum:
-            st.write("Puntuación de Momentum para BTCUSDT.P:")
-            btc_momentum_df = pd.DataFrame([btc_momentum])
-            st.table(btc_momentum_df)
-        else:
-            st.write("No se pudieron obtener datos para BTCUSDT.P.")
 
 if __name__ == "__main__":
     main()
