@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
+from tensorflow.keras.layers import LSTM, Dense, Input
 import io
 
 # Set the page config
@@ -47,7 +47,7 @@ def preprocess_data(df):
         st.write(df['Fecha'].head())
         raise e
     df.set_index('timestamp', inplace=True)
-    df.fillna(method='ffill', inplace=True)
+    df.ffill(inplace=True)  # Use ffill method directly
     return df
 
 # Upload CSV files
@@ -89,7 +89,8 @@ if uploaded_files:
         X_test_reshaped = np.reshape(X_test_scaled, (X_test_scaled.shape[0], 1, X_test_scaled.shape[1]))
 
         model = Sequential()
-        model.add(LSTM(50, return_sequences=True, input_shape=(1, X_train_scaled.shape[1])))
+        model.add(Input(shape=(1, X_train_scaled.shape[1])))
+        model.add(LSTM(50, return_sequences=True))
         model.add(LSTM(50))
         model.add(Dense(1))
 
