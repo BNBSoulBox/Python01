@@ -4,7 +4,6 @@ from tradingview_ta import TA_Handler, Interval
 import io
 from datetime import datetime
 import os
-import time
 
 # Set the page config
 st.set_page_config(
@@ -38,7 +37,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# List of symbols to be analyzed, each appended with ".P"
+# List of symbols to be analyzed
 symbols = [
     "10000LADYSUSDT.P", "10000NFTUSDT.P", "1000BONKUSDT.P", "1000BTTUSDT.P", 
     # (Add the rest of the symbols here)
@@ -48,20 +47,21 @@ symbols = [
 if not os.path.exists('momentum_data'):
     os.makedirs('momentum_data')
 
-# Indicator weights
+# Indicator weights adjusted for better strategy balance
 indicator_weights = {
-    'RSI': 0.1,
-    'Stoch.K': 0.1,
-    'Stoch.D': 0.1,
-    'MACD.macd': 0.2,
-    'MACD.signal': 0.2,
-    'MACD.histogram': 0.2,
-    'ADX': 0.1,
-    'CCI20': 0.1,
-    'ATR': 0.1
+    'RSI': 0.10,            # Relative Strength Index
+    'Stoch.K': 0.10,        # Stochastic Oscillator %K
+    'Stoch.D': 0.10,        # Stochastic Oscillator %D
+    'MACD.macd': 0.15,      # MACD main line
+    'MACD.signal': 0.15,    # MACD signal line
+    'MACD.histogram': 0.10, # MACD histogram
+    'ADX': 0.10,            # Average Directional Index
+    'CCI20': 0.10,          # Commodity Channel Index (20-period)
+    'ATR': 0.10             # Average True Range
 }
 
 def fetch_all_data(symbol, exchange, screener, interval):
+    """Fetches trading data for a given symbol and interval from TradingView."""
     handler = TA_Handler(
         symbol=symbol,
         exchange=exchange,
@@ -73,12 +73,15 @@ def fetch_all_data(symbol, exchange, screener, interval):
     return analysis
 
 def calculate_weighted_indicators(analysis):
+    """Calculates weighted values for indicators based on defined weights."""
     weighted_data = {}
     for indicator, weight in indicator_weights.items():
-        weighted_data[indicator] = analysis.indicators.get(indicator, None) * weight
+        value = analysis.indicators.get(indicator, 0)  # Default to 0 if indicator data is missing
+        weighted_data[indicator] = value * weight
     return weighted_data
 
 def calculate_momentum_score(data):
+    """Calculates momentum score based on analysis recommendations."""
     weights = {'STRONG_BUY': 2, 'BUY': 1, 'NEUTRAL': 0, 'SELL': -1, 'STRONG_SELL': -2}
     score = 0
     for interval, analysis in data.items():
@@ -93,6 +96,7 @@ def main():
     exchange = st.text_input("Exchange", "BYBIT")
     screener = st.text_input("Screener", "crypto")
     
+    # Slider controls for setting interval weights
     intervals = {
         Interval.INTERVAL_1_MINUTE: st.slider("Intervalo 1 Minuto", 0.0, 1.0, 0.1),
         Interval.INTERVAL_5_MINUTES: st.slider("Intervalo 5 Minutos", 0.0, 1.0, 0.1),
