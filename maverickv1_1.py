@@ -109,7 +109,7 @@ intervals = {
 @st.cache_data(ttl=300)
 def fetch_all_data(symbol, exchange, screener, interval):
     try:
-        handler = TA_handler(
+        handler = TA_Handler(
             symbol=symbol,
             exchange=exchange,
             screener=screener,
