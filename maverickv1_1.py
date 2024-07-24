@@ -1,195 +1,296 @@
 import streamlit as st
-import csv
 import pandas as pd
-from tradingview_ta import TA_Handler, Interval, Exchange
+import numpy as np
+from tradingview_ta import TA_Handler, Interval
+from datetime import datetime
+import time
+import os
+import matplotlib.pyplot as plt
+import logging
 
-# Function to fetch data using TradingView TA Handler
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Set the page config
+st.set_page_config(
+    page_title="Momentum Score",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for dark theme and styles
+st.markdown("""
+    <style>
+    .css-18e3th9 {
+        background-color: #0e1117;
+        color: #ffffff;
+    }
+    .css-1lcbmhc {
+        background-color: #161a25;
+    }
+    .css-1d391kg {
+        color: #ffffff;
+    }
+    .stButton>button {
+        color: #ffffff;
+        background-color: #d4af37;
+        border-color: #d4af37;
+    }
+    .css-1offfwp e1h7wlp60 {
+        color: #ffffff;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# List of symbols to be analyzed
+symbols = [
+    "10000LADYSUSDT.P", "10000NFTUSDT.P", "1000BONKUSDT.P", "1000BTTUSDT.P", 
+    "1000FLOKIUSDT.P", "1000LUNCUSDT.P", "1000PEPEUSDT.P", "1000XECUSDT.P", 
+    "1INCHUSDT.P", "AAVEUSDT.P", "ACHUSDT.P", "ADAUSDT.P", "AGLDUSDT.P", 
+    "AKROUSDT.P", "ALGOUSDT.P", "ALICEUSDT.P", "ALPACAUSDT.P", 
+    "ALPHAUSDT.P", "AMBUSDT.P", "ANKRUSDT.P", "ANTUSDT.P", 
+    "APEUSDT.P", "API3USDT.P", "APTUSDT.P", "ARUSDT.P", "ARBUSDT.P", "ARKUSDT.P", 
+    "ARKMUSDT.P", "ARPAUSDT.P", "ASTRUSDT.P", "ATAUSDT.P", "ATOMUSDT.P", 
+    "AUCTIONUSDT.P", "AUDIOUSDT.P", "AVAXUSDT.P", "AXSUSDT.P", "BADGERUSDT.P", 
+    "BAKEUSDT.P", "BALUSDT.P", "BANDUSDT.P", "BATUSDT.P", "BCHUSDT.P", 
+    "BELUSDT.P", "BICOUSDT.P", "BIGTIMEUSDT.P", "BLURUSDT.P", "BLZUSDT.P",
+    "BTCUSDT.P", "C98USDT.P", "CEEKUSDT.P", "CELOUSDT.P", "CELRUSDT.P", "CFXUSDT.P",
+    "CHRUSDT.P", "CHZUSDT.P", "CKBUSDT.P", "COMBOUSDT.P", "COMPUSDT.P",
+    "COREUSDT.P", "COTIUSDT.P", "CROUSDT.P", "CRVUSDT.P", "CTCUSDT.P",
+    "CTKUSDT.P", "CTSIUSDT.P", "CVCUSDT.P", "CVXUSDT.P", "CYBERUSDT.P", "DARUSDT.P",
+    "DASHUSDT.P", "DENTUSDT.P", "DGBUSDT.P", "DODOUSDT.P", "DOGEUSDT.P", "DOTUSDT.P",
+    "DUSKUSDT.P", "DYDXUSDT.P", "EDUUSDT.P", "EGLDUSDT.P", "ENJUSDT.P", "ENSUSDT.P",
+    "EOSUSDT.P", "ETCUSDT.P", "ETHUSDT.P", "ETHWUSDT.P", "FILUSDT.P",
+    "FITFIUSDT.P", "FLOWUSDT.P", "FLRUSDT.P", "FORTHUSDT.P", "FRONTUSDT.P", "FTMUSDT.P",
+    "FXSUSDT.P", "GALAUSDT.P", "GFTUSDT.P", "GLMUSDT.P",
+    "GLMRUSDT.P", "GMTUSDT.P", "GMXUSDT.P", "GRTUSDT.P", "GTCUSDT.P", "HBARUSDT.P", 
+    "HFTUSDT.P", "HIFIUSDT.P", "HIGHUSDT.P", "HNTUSDT.P",
+    "HOOKUSDT.P", "HOTUSDT.P", "ICPUSDT.P", "ICXUSDT.P", "IDUSDT.P", "IDEXUSDT.P",
+    "ILVUSDT.P", "IMXUSDT.P", "INJUSDT.P", "IOSTUSDT.P", "IOTAUSDT.P", "IOTXUSDT.P",
+    "JASMYUSDT.P", "JOEUSDT.P", "JSTUSDT.P", "KASUSDT.P", "KAVAUSDT.P", "KDAUSDT.P",
+    "KEYUSDT.P", "KLAYUSDT.P", "KNCUSDT.P", "KSMUSDT.P", "LDOUSDT.P", "LEVERUSDT.P",
+    "LINAUSDT.P", "LINKUSDT.P", "LITUSDT.P", "LOOKSUSDT.P", "LOOMUSDT.P", "LPTUSDT.P",
+    "LQTYUSDT.P", "LRCUSDT.P", "LTCUSDT.P", "LUNA2USDT.P", "MAGICUSDT.P",
+    "MANAUSDT.P", "MASKUSDT.P", "MATICUSDT.P", "MAVUSDT.P", "MDTUSDT.P",
+    "MINAUSDT.P", "MKRUSDT.P", "MNTUSDT.P", "MTLUSDT.P", "NEARUSDT.P",
+    "NEOUSDT.P", "NKNUSDT.P", "NMRUSDT.P", "NTRNUSDT.P", "OGUSDT.P",
+    "OGNUSDT.P", "OMGUSDT.P", "ONEUSDT.P", "ONTUSDT.P", "OPUSDT.P", "ORBSUSDT.P",
+    "ORDIUSDT.P", "OXTUSDT.P", "PAXGUSDT.P", "PENDLEUSDT.P", "PEOPLEUSDT.P", "PERPUSDT.P",
+    "PHBUSDT.P", "PROMUSDT.P", "QNTUSDT.P", "QTUMUSDT.P", "RADUSDT.P", "RDNTUSDT.P", 
+    "REEFUSDT.P", "RENUSDT.P", "REQUSDT.P", "RLCUSDT.P", "ROSEUSDT.P", 
+    "RPLUSDT.P", "RSRUSDT.P", "RSS3USDT.P", "RUNEUSDT.P", "RVNUSDT.P",
+    "SANDUSDT.P", "SCUSDT.P", "SCRTUSDT.P", "SEIUSDT.P", "SFPUSDT.P", "SHIB1000USDT.P",
+    "SKLUSDT.P", "SLPUSDT.P", "SNXUSDT.P", "SOLUSDT.P", "SPELLUSDT.P", "SSVUSDT.P", 
+    "STGUSDT.P", "STMXUSDT.P", "STORJUSDT.P", "STPTUSDT.P", "STXUSDT.P", "SUIUSDT.P", 
+    "SUNUSDT.P", "SUSHIUSDT.P", "SWEATUSDT.P", "SXPUSDT.P",
+    "TUSDT.P", "THETAUSDT.P", "TLMUSDT.P", "TOMIUSDT.P", "TONUSDT.P",
+    "TRBUSDT.P", "TRUUSDT.P", "TRXUSDT.P", "TWTUSDT.P", "UMAUSDT.P", "UNFIUSDT.P",
+    "UNIUSDT.P", "USDCUSDT.P", "VETUSDT.P", "VGXUSDT.P", "VRAUSDT.P",
+    "WAVESUSDT.P", "WAXPUSDT.P", "WLDUSDT.P", "WOOUSDT.P", "XCNUSDT.P",
+    "XEMUSDT.P", "XLMUSDT.P", "XMRUSDT.P", "XNOUSDT.P", "XRPUSDT.P", "XTZUSDT.P",
+    "XVGUSDT.P", "XVSUSDT.P", "YFIUSDT.P", "YGGUSDT.P", "ZECUSDT.P", "ZENUSDT.P", "ZILUSDT.P", "ZRXUSDT.P"
+]
+
+# Configuration
+exchange = "BYBIT"
+screener = "crypto"
+intervals = {
+    Interval.INTERVAL_1_MINUTE: 0.1,
+    Interval.INTERVAL_5_MINUTES: 0.1,
+    Interval.INTERVAL_15_MINUTES: 0.2,
+    Interval.INTERVAL_30_MINUTES: 0.1,
+    Interval.INTERVAL_1_HOUR: 0.2,
+    Interval.INTERVAL_2_HOURS: 0.1,
+    Interval.INTERVAL_4_HOURS: 0.2,
+    Interval.INTERVAL_1_DAY: 0.1
+}
+
+@st.cache_data(ttl=300)
 def fetch_all_data(symbol, exchange, screener, interval):
-    handler = TA_Handler(
-        symbol=symbol,
-        exchange=exchange,
-        screener=screener,
-        interval=interval,
-        timeout=None
-    )
-    analysis = handler.get_analysis()
-    return analysis
+    try:
+        handler = TA_Handler(
+            symbol=symbol,
+            exchange=exchange,
+            screener=screener,
+            interval=interval,
+            timeout=None
+        )
+        analysis = handler.get_analysis()
+        return analysis
+    except Exception as e:
+        logging.error(f"Error fetching data for {symbol} on {interval}: {str(e)}")
+        return None
 
-# Function to save data to CSV
-def save_to_csv(data, filename='coin_analysis_data.csv'):
-    with open(filename, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Symbol', 'Interval', 'Category', 'Indicator', 'Value'])
-        for (symbol, interval), analysis in data.items():
-            if analysis is None:
-                continue
-            summary = analysis.summary
-            oscillators = analysis.oscillators
-            moving_averages = analysis.moving_averages
-            indicators = analysis.indicators
+def calculate_momentum_score(data):
+    weights = {'STRONG_BUY': 2, 'BUY': 1, 'NEUTRAL': 0, 'SELL': -1, 'STRONG_SELL': -2}
+    score = 0
+    for interval, analysis in data.items():
+        if analysis:
+            rating = analysis.summary['RECOMMENDATION'].upper()
+            score += weights.get(rating, 0)
+    return score
 
-            writer.writerow([symbol, interval, 'Summary', 'RECOMMENDATION', summary['RECOMMENDATION']])
-            writer.writerow([symbol, interval, 'Summary', 'BUY', summary['BUY']])
-            writer.writerow([symbol, interval, 'Summary', 'SELL', summary['SELL']])
-            writer.writerow([symbol, interval, 'Summary', 'NEUTRAL', summary['NEUTRAL']])
-
-            writer.writerow([symbol, interval, 'Oscillators', 'RECOMMENDATION', oscillators['RECOMMENDATION']])
-            for key, value in oscillators['COMPUTE'].items():
-                writer.writerow([symbol, interval, 'Oscillators', key, value])
-
-            writer.writerow([symbol, interval, 'Moving Averages', 'RECOMMENDATION', moving_averages['RECOMMENDATION']])
-            for key, value in moving_averages['COMPUTE'].items():
-                writer.writerow([symbol, interval, 'Moving Averages', key, value])
-
-            for key, value in indicators.items():
-                writer.writerow([symbol, interval, 'Indicators', key, value])
-
-# Function to calculate weighted recommendation score
-def calculate_weighted_recommendation(data, timeframes):
-    scores = {
-        'STRONG_BUY': 2,
-        'BUY': 1,
-        'NEUTRAL': 0,
-        'SELL': -1,
-        'STRONG_SELL': -2
-    }
+def update_plot(df):
+    fig, ax = plt.subplots(figsize=(12, 6))
     
-    weights = {
-        '5m': 0.1,
-        '15m': 0.2,
-        '30m': 0.3,
-        '1h': 0.4,
-        '2h': 0.5,
-        '4h': 0.6,
-        '1d': 0.7
-    }
-
-    total_score = 0
-    total_weight = 0
-
-    for (symbol, interval), analysis in data.items():
-        if analysis is None:
-            continue
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+    df = df.sort_values('Timestamp')
+    
+    avg_momentum = df['Average Momentum']
+    
+    for i in range(1, len(avg_momentum)):
+        start = df['Timestamp'].iloc[i-1]
+        end = df['Timestamp'].iloc[i]
+        y1 = avg_momentum.iloc[i-1]
+        y2 = avg_momentum.iloc[i]
         
-        summary = analysis.summary
-        weighted_score = (
-            summary.get('BUY', 0) * scores['BUY'] +
-            summary.get('STRONG_BUY', 0) * scores['STRONG_BUY'] +
-            summary.get('NEUTRAL', 0) * scores['NEUTRAL'] +
-            summary.get('SELL', 0) * scores['SELL'] +
-            summary.get('STRONG_SELL', 0) * scores['STRONG_SELL']
-        ) * weights[interval]
+        if y1 > 0.5 and y2 > 0.5:
+            color = 'green'
+        elif y1 < -0.5 and y2 < -0.5:
+            color = 'red'
+        elif -0.5 <= y1 <= 0.5 and -0.5 <= y2 <= 0.5:
+            color = 'grey'
+        else:
+            if y2 > 0.5:
+                color = 'green'
+            elif y2 < -0.5:
+                color = 'red'
+            else:
+                color = 'grey'
         
-        total_score += weighted_score
-        total_weight += weights[interval]
+        ax.plot([start, end], [y1, y2], color=color)
+    
+    ax.plot([], [], color='blue', label='Promedio Total de Puntuaciones de Momentum')
+    
+    btc_data = df[df['Symbol'] == 'BTCUSDT.P']
+    if not btc_data.empty:
+        ax.plot(btc_data['Timestamp'], btc_data['Momentum Score'], color='yellow', label='Puntuacion de Momentum para BTCUSDT.P')
+    else:
+        logging.warning("No BTC data available for plotting")
+    
+    ax.axhline(y=0, color='black', linestyle='--')
+    
+    ax.set_ylim(-2, 2)
+    ax.set_xlabel('Timestamp')
+    ax.set_ylabel('Momentum Score')
+    ax.legend()
+    ax.grid(True)
+    
+    plt.gcf().autofmt_xdate()
+    
+    return fig
 
-    average_score = total_score / total_weight if total_weight else 0
-    return average_score
+def display_top_20_scores(results, historical_df):
+    # Sort results by Momentum Score
+    sorted_results = sorted(results, key=lambda x: x['Momentum Score'], reverse=True)
+    
+    # Display top 20 Long scores
+    st.subheader("Top 20 Long Momentum Scores:")
+    long_df = pd.DataFrame(sorted_results[:20])
+    if not long_df.empty:
+        long_df = long_df.copy()
+        long_df['Previous Score'] = long_df['Symbol'].map(historical_df.set_index('Symbol')['Momentum Score'].to_dict())
+        long_df['Change'] = long_df['Momentum Score'] - long_df['Previous Score'].fillna(0)
+        avg_change_long = long_df['Change'].mean()
+        st.table(long_df[['Symbol', 'Change', 'Momentum Score', 'Timestamp']])
+        for _, row in long_df.iterrows():
+            st.metric(
+                label=f"{row['Symbol']}",
+                value=f"{row['Momentum Score']:.2f}",
+                delta=f"{row['Change']:.2f}" if row['Change'] != 0 else "No Change"
+            )
+        st.metric(
+            label="Average Change in Top 20 Long Scores",
+            value=f"{avg_change_long:.2f}",
+            delta=f"{avg_change_long:.2f}"
+        )
+
+    # Display top 20 Short scores
+    st.subheader("Top 20 Short Momentum Scores:")
+    short_df = pd.DataFrame(sorted_results[-20:][::-1])
+    if not short_df.empty:
+        short_df = short_df.copy()
+        short_df['Previous Score'] = short_df['Symbol'].map(historical_df.set_index('Symbol')['Momentum Score'].to_dict())
+        short_df['Change'] = short_df['Momentum Score'] - short_df['Previous Score'].fillna(0)
+        avg_change_short = short_df['Change'].mean()
+        st.table(short_df[['Symbol', 'Change', 'Momentum Score', 'Timestamp']])
+        for _, row in short_df.iterrows():
+            st.metric(
+                label=f"{row['Symbol']}",
+                value=f"{row['Momentum Score']:.2f}",
+                delta=f"{row['Change']:.2f}" if row['Change'] != 0 else "No Change"
+            )
+        st.metric(
+            label="Average Change in Top 20 Short Scores",
+            value=f"{avg_change_short:.2f}",
+            delta=f"{avg_change_short:.2f}"
+        )
 
 def main():
-    st.title('Crypto Analysis with TradingView TA')
-
-    # List of symbols to analyze
-    symbols = [
-        "10000LADYSUSDT", "10000NFTUSDT", "1000BONKUSDT", "1000BTTUSDT", 
-        "1000FLOKIUSDT", "1000LUNCUSDT", "1000PEPEUSDT", "1000XECUSDT", 
-        "1INCHUSDT", "AAVEUSDT", "ACHUSDT", "ADAUSDT", "AGIXUSDT", 
-        "AGLDUSDT", "AKROUSDT", "ALGOUSDT", "ALICEUSDT", "ALPACAUSDT", 
-        "ALPHAUSDT", "AMBUSDT", "ANCUSDT", "ANKRUSDT", "ANTUSDT", 
-        "APEUSDT", "API3USDT", "APTUSDT", "ARUSDT", "ARBUSDT", "ARKUSDT", 
-        "ARKMUSDT", "ARPAUSDT", "ASTRUSDT", "ATAUSDT", "ATOMUSDT", 
-        "AUCTIONUSDT", "AUDIOUSDT", "AVAXUSDT", "AXSUSDT", "BADGERUSDT", 
-        "BAKEUSDT", "BALUSDT", "BANDUSDT", "BATUSDT", "BCHUSDT", 
-        "BELUSDT", "BICOUSDT", "BIGTIMEUSDT", "BITUSDT", "BLURUSDT", "BLZUSDT",
-        "BUSDUSDT", "C98USDT", "CEEKUSDT", "CELOUSDT", "CELRUSDT", "CFXUSDT",
-        "CHRUSDT", "CHZUSDT", "CKBUSDT", "COCOSUSDT", "COMBOUSDT", "COMPUSDT",
-        "COREUSDT", "COTIUSDT", "CREAMUSDT", "CROUSDT", "CRVUSDT", "CTCUSDT",
-        "CTKUSDT", "CTSIUSDT", "CVCUSDT", "CVXUSDT", "CYBERUSDT", "DARUSDT",
-        "DASHUSDT", "DENTUSDT", "DGBUSDT", "DODOUSDT", "DOGEUSDT", "DOTUSDT",
-        "DUSKUSDT", "DYDXUSDT", "EDUUSDT", "EGLDUSDT", "ENJUSDT", "ENSUSDT",
-        "EOSUSDT", "ETCUSDT", "ETHUSDT", "ETHWUSDT", "FETUSDT", "FILUSDT",
-        "FITFIUSDT", "FLOWUSDT", "FLRUSDT", "FORTHUSDT", "FRONTUSDT", "FTMUSDT",
-        "FTTUSDT", "FXSUSDT", "GALUSDT", "GALAUSDT", "GFTUSDT", "GLMUSDT",
-        "GLMRUSDT", "GMTUSDT", "GMXUSDT", "GPTUSDT", "GRTUSDT", "GSTUSDT",
-        "GTCUSDT", "HBARUSDT", "HFTUSDT", "HIFIUSDT", "HIGHUSDT", "HNTUSDT",
-        "HOOKUSDT", "HOTUSDT", "ICPUSDT", "ICXUSDT", "IDUSDT", "IDEXUSDT",
-        "ILVUSDT", "IMXUSDT", "INJUSDT", "IOSTUSDT", "IOTAUSDT", "IOTXUSDT",
-        "JASMYUSDT", "JOEUSDT", "JSTUSDT", "KASUSDT", "KAVAUSDT", "KDAUSDT",
-        "KEYUSDT", "KLAYUSDT", "KNCUSDT", "KSMUSDT", "LDOUSDT", "LEVERUSDT",
-        "LINAUSDT", "LINKUSDT", "LITUSDT", "LOOKSUSDT", "LOOMUSDT", "LPTUSDT",
-        "LQTYUSDT", "LRCUSDT", "LTCUSDT", "LUNAUSDT", "LUNA2USDT", "MAGICUSDT",
-        "MANAUSDT", "MASKUSDT", "MATICUSDT", "MAVUSDT", "MCUSDT", "MDTUSDT",
-        "MINAUSDT", "MKRUSDT", "MNTUSDT", "MTLUSDT", "MULTIUSDT", "NEARUSDT",
-        "NEOUSDT", "NKNUSDT", "NMRUSDT", "NTRNUSDT", "OCEANUSDT", "OGUSDT",
-        "OGNUSDT", "OMGUSDT", "ONEUSDT", "ONTUSDT", "OPUSDT", "ORBSUSDT",
-        "ORDIUSDT", "OXTUSDT", "PAXGUSDT", "PENDLEUSDT", "PEOPLEUSDT", "PERPUSDT",
-        "PHBUSDT", "PROMUSDT", "QNTUSDT", "QTUMUSDT", "RADUSDT", "RAYUSDT",
-        "RDNTUSDT", "REEFUSDT", "RENUSDT", "REQUSDT", "RLCUSDT", "RNDRUSDT",
-        "ROSEUSDT", "RPLUSDT", "RSRUSDT", "RSS3USDT", "RUNEUSDT", "RVNUSDT",
-        "SANDUSDT", "SCUSDT", "SCRTUSDT", "SEIUSDT", "SFPUSDT", "SHIB1000USDT",
-        "SKLUSDT", "SLPUSDT", "SNXUSDT", "SOLUSDT", "SPELLUSDT", "SRMUSDT",
-        "SSVUSDT", "STGUSDT", "STMXUSDT", "STORJUSDT", "STPTUSDT", "STRAXUSDT",
-        "STXUSDT", "SUIUSDT", "SUNUSDT", "SUSHIUSDT", "SWEATUSDT", "SXPUSDT",
-        "TUSDT", "THETAUSDT", "TLMUSDT", "TOMIUSDT", "TOMOUSDT", "TONUSDT",
-        "TRBUSDT", "TRUUSDT", "TRXUSDT", "TWTUSDT", "UMAUSDT", "UNFIUSDT",
-        "UNIUSDT", "USDCUSDT", "USTUSDT", "VETUSDT", "VGXUSDT", "VRAUSDT",
-        "WAVESUSDT", "WAXPUSDT", "WLDUSDT", "WOOUSDT", "WSMUSDT", "XCNUSDT",
-        "XEMUSDT", "XLMUSDT", "XMRUSDT", "XNOUSDT", "XRPUSDT", "XTZUSDT",
-        "XVGUSDT", "XVSUSDT", "YFIUSDT", "YFIIUSDT", "YGGUSDT", "ZBCUSDT",
-        "ZECUSDT", "ZENUSDT", "ZILUSDT", "ZRXUSDT"
-    ]
-
-    exchange = "BYBIT"
-    screener = "crypto"
-    intervals = [
-        Interval.INTERVAL_5_MINUTES,
-        Interval.INTERVAL_15_MINUTES,
-        Interval.INTERVAL_30_MINUTES,
-        Interval.INTERVAL_1_HOUR,
-        Interval.INTERVAL_2_HOURS,
-        Interval.INTERVAL_4_HOURS,
-        Interval.INTERVAL_1_DAY
-    ]
-
-    interval_str_map = {
-        Interval.INTERVAL_5_MINUTES: '5m',
-        Interval.INTERVAL_15_MINUTES: '15m',
-        Interval.INTERVAL_30_MINUTES: '30m',
-        Interval.INTERVAL_1_HOUR: '1h',
-        Interval.INTERVAL_2_HOURS: '2h',
-        Interval.INTERVAL_4_HOURS: '4h',
-        Interval.INTERVAL_1_DAY: '1d'
-    }
-
-    if st.button("Run The Wheel"):
-        data = {}
-        for symbol in symbols:
-            for interval in intervals:
-                try:
+    st.title('Crypto Market Momentum Score')
+    
+    plot_placeholder = st.empty()
+    top_scores_placeholder = st.empty()
+    
+    historical_file = 'momentum_data/historical_momentum_scores.csv'
+    
+    # Check if the historical file exists; if not, create an empty DataFrame
+    if os.path.exists(historical_file):
+        df = pd.read_csv(historical_file, parse_dates=['Timestamp'])
+        historical_df = df[['Symbol', 'Momentum Score']].copy()
+    else:
+        df = pd.DataFrame(columns=["Symbol", "Momentum Score", "Timestamp"])
+        historical_df = pd.DataFrame(columns=["Symbol", "Momentum Score"])
+    
+    while True:
+        try:
+            results = []
+            error_symbols = []
+            current_datetime = datetime.now()
+            
+            for symbol in symbols:
+                data = {}
+                for interval, weight in intervals.items():
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
-                    data[(symbol, interval_str_map[interval])] = analysis
-                except Exception as e:
-                    st.error(f"Error fetching data for {symbol} at interval {interval_str_map[interval]}: {e}")
-                    data[(symbol, interval_str_map[interval])] = None
-
-        if data:
-            save_to_csv(data)
-            st.success('Data has been saved to coin_analysis_data.csv')
-            st.download_button(
-                label="Download CSV",
-                data=open('coin_analysis_data.csv').read(),
-                file_name='coin_analysis_data.csv',
-                mime='text/csv'
-            )
-
-            timeframes = list(interval_str_map.values())
-            average_scores = {symbol: calculate_weighted_recommendation({(s, i): data[(s, i)] for (s, i) in data if s == symbol}, timeframes) for symbol in symbols}
-
-            neutral_recommendations = [symbol for symbol, score in average_scores.items() if -0.5 <= score <= 0.5]
-
-            st.write("Neutral Recommendations:")
-            for symbol in neutral_recommendations:
-                st.write(symbol)
+                    data[interval] = analysis
+                
+                if all(value is None for value in data.values()):
+                    error_symbols.append(symbol)
+                else:
+                    weighted_score = sum(weight * calculate_momentum_score({interval: data[interval]}) for interval, weight in intervals.items() if data[interval] is not None)
+                    results.append({"Symbol": symbol, "Momentum Score": weighted_score, "Timestamp": current_datetime})
+            
+            new_df = pd.DataFrame(results)
+            if not df.empty:
+                df = pd.concat([df, new_df], ignore_index=True)
+            else:
+                df = new_df
+            
+            df['Average Momentum'] = df.groupby('Timestamp')['Momentum Score'].transform('mean')
+            
+            logging.info(f"DataFrame shape: {df.shape}")
+            logging.info(f"Unique timestamps: {df['Timestamp'].nunique()}")
+            logging.info(f"Unique symbols: {df['Symbol'].nunique()}")
+            
+            # Save the updated DataFrame to CSV
+            df.to_csv(historical_file, index=False)
+            
+            # Update plot
+            fig = update_plot(df)
+            plot_placeholder.pyplot(fig)
+            
+            # Display top 20 scores
+            top_scores_placeholder.empty()
+            display_top_20_scores(results, historical_df)
+            
+            # Sleep for a certain interval before the next update
+            time.sleep(60)  # Adjust as needed
+            
+        except Exception as e:
+            logging.error(f"An error occurred: {str(e)}")
+            st.error(f"An error occurred: {str(e)}")
+            time.sleep(600)  # Wait before retrying
 
 if __name__ == "__main__":
     main()
