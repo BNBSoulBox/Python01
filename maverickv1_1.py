@@ -131,20 +131,20 @@ def calculate_momentum_score(data):
             score += weights.get(rating, 0)
     return score
 
-def update_plot(df):
+def update_plot(df, selected_symbol=None):
     fig, ax = plt.subplots(figsize=(12, 6))
-    
+
     df['Timestamp'] = pd.to_datetime(df['Timestamp'])
     df = df.sort_values('Timestamp')
-    
+
     avg_momentum = df['Average Momentum']
-    
+
     for i in range(1, len(avg_momentum)):
         start = df['Timestamp'].iloc[i-1]
         end = df['Timestamp'].iloc[i]
         y1 = avg_momentum.iloc[i-1]
         y2 = avg_momentum.iloc[i]
-        
+
         if y1 > 0.5 and y2 > 0.5:
             color = 'green'
         elif y1 < -0.5 and y2 < -0.5:
@@ -158,136 +158,115 @@ def update_plot(df):
                 color = 'red'
             else:
                 color = 'grey'
-        
+
         ax.plot([start, end], [y1, y2], color=color)
-    
+
     ax.plot([], [], color='blue', label='Promedio Total de Puntuaciones de Momentum')
-    
-    btc_data = df[df['Symbol'] == 'BTCUSDT.P']
-    if not btc_data.empty:
-        ax.plot(btc_data['Timestamp'], btc_data['Momentum Score'], color='yellow', label='Puntuacion de Momentum para BTCUSDT.P')
-    else:
-        logging.warning("No BTC data available for plotting")
-    
+
+    if selected_symbol:
+        selected_data = df[df['Symbol'] == selected_symbol]
+        if not selected_data.empty:
+            ax.plot(selected_data['Timestamp'], selected_data['Momentum Score'], color='yellow', linestyle='--', label=f'Momentum Score for {selected_symbol}')
+        else:
+            logging.warning(f"No data available for plotting {selected_symbol}")
+
     ax.axhline(y=0, color='black', linestyle='--')
-    
+
     ax.set_ylim(-2, 2)
     ax.set_xlabel('Timestamp')
     ax.set_ylabel('Momentum Score')
-    ax.legend(loc='upper right')  # Specify legend location
-    
+    ax.legend()
     ax.grid(True)
-    
+
     plt.gcf().autofmt_xdate()
-    
+
     return fig
 
+# Function to display top 20 scores and return selected symbol
 def display_top_20_scores(results, historical_df):
-    # Sort results by Momentum Score
     sorted_results = sorted(results, key=lambda x: x['Momentum Score'], reverse=True)
-    
-    # Display top 20 Long scores
-    st.subheader("Top 20 Long Momentum Scores:")
+
     long_df = pd.DataFrame(sorted_results[:20])
-    if not long_df.empty:
-        long_df = long_df.copy()
-        long_df['Previous Score'] = long_df['Symbol'].map(historical_df.set_index('Symbol')['Momentum Score'].to_dict())
-        long_df['Change'] = long_df['Momentum Score'] - long_df['Previous Score'].fillna(0)
-        avg_change_long = long_df['Change'].mean()
-        st.table(long_df[['Symbol', 'Change', 'Momentum Score', 'Timestamp']])
-        for _, row in long_df.iterrows():
-            st.metric(
-                label=f"{row['Symbol']}",
-                value=f"{row['Momentum Score']:.2f}",
-                delta=f"{row['Change']:.2f}" if row['Change'] != 0 else "No Change"
-            )
-        st.metric(
-            label="Average Change in Top 20 Long Scores",
-            value=f"{avg_change_long:.2f}",
-            delta=f"{avg_change_long:.2f}"
-        )
-
-    # Display top 20 Short scores
-    st.subheader("Top 20 Short Momentum Scores:")
     short_df = pd.DataFrame(sorted_results[-20:][::-1])
-    if not short_df.empty:
-        short_df = short_df.copy()
-        short_df['Previous Score'] = short_df['Symbol'].map(historical_df.set_index('Symbol')['Momentum Score'].to_dict())
-        short_df['Change'] = short_df['Momentum Score'] - short_df['Previous Score'].fillna(0)
-        avg_change_short = short_df['Change'].mean()
-        st.table(short_df[['Symbol', 'Change', 'Momentum Score', 'Timestamp']])
-        for _, row in short_df.iterrows():
-            st.metric(
-                label=f"{row['Symbol']}",
-                value=f"{row['Momentum Score']:.2f}",
-                delta=f"{row['Change']:.2f}" if row['Change'] != 0 else "No Change"
-            )
-        st.metric(
-            label="Average Change in Top 20 Short Scores",
-            value=f"{avg_change_short:.2f}",
-            delta=f"{avg_change_short:.2f}"
-        )
 
+    for df in [long_df, short_df]:
+        if not df.empty:
+            df['Previous Score'] = df['Symbol'].map(historical_df.set_index('Symbol')['Momentum Score'].to_dict())
+            df['Change'] = df['Momentum Score'] - df['Previous Score'].fillna(0)
+            df['Momentum Score'] = df['Momentum Score'].round(2)
+            df['Change'] = df['Change'].round(2)
+
+    return long_df, short_df
+
+# Main function to run the Streamlit app
 def main():
     st.title('Crypto Market Momentum Score')
-    
+
     plot_placeholder = st.empty()
-    top_scores_placeholder = st.empty()
-    
-    # Ensure the directory exists
-    if not os.path.exists('momentum_data'):
-        os.makedirs('momentum_data')
-    
+    long_scores_placeholder = st.empty()
+    short_scores_placeholder = st.empty()
+
     historical_file = 'momentum_data/historical_momentum_scores.csv'
-    
-    # Check if the historical file exists; if not, create an empty DataFrame
+
     if os.path.exists(historical_file):
         df = pd.read_csv(historical_file, parse_dates=['Timestamp'])
         historical_df = df[['Symbol', 'Momentum Score']].copy()
     else:
         df = pd.DataFrame(columns=["Symbol", "Momentum Score", "Timestamp"])
         historical_df = pd.DataFrame(columns=["Symbol", "Momentum Score"])
-    
+
     while True:
         try:
             results = []
             error_symbols = []
             current_datetime = datetime.now()
-            
+
             for symbol in symbols:
                 data = {}
                 for interval, weight in intervals.items():
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
                     data[interval] = analysis
-                
+
                 if all(value is None for value in data.values()):
                     error_symbols.append(symbol)
                 else:
                     weighted_score = sum(weight * calculate_momentum_score({interval: data[interval]}) for interval, weight in intervals.items() if data[interval] is not None)
                     results.append({"Symbol": symbol, "Momentum Score": weighted_score, "Timestamp": current_datetime})
-            
+
             new_df = pd.DataFrame(results)
             if not df.empty:
                 df = pd.concat([df, new_df], ignore_index=True)
             else:
                 df = new_df
-            
-            # Save the DataFrame to the CSV file
+
+            df['Average Momentum'] = df.groupby('Timestamp')['Momentum Score'].transform('mean')
+
             df.to_csv(historical_file, index=False)
-            
-            # Display the top 20 Momentum Scores
-            with top_scores_placeholder.container():
-                display_top_20_scores(results, historical_df)
-            
-            # Update the plot
-            fig = update_plot(df)
+
+            long_df, short_df = display_top_20_scores(results, historical_df)
+
+            selected_symbol = st.selectbox("Select Symbol to Highlight", options=long_df['Symbol'].tolist() + short_df['Symbol'].tolist())
+
+            fig = update_plot(df, selected_symbol=selected_symbol)
             plot_placeholder.pyplot(fig)
-            
+
+            with long_scores_placeholder.container():
+                st.subheader("Top 20 Long Momentum Scores:")
+                st.dataframe(long_df[['Symbol', 'Momentum Score', 'Change']])
+                avg_change_long = long_df['Change'].mean()
+                st.metric("Average Change in Long Scores", f"{avg_change_long:.2f}")
+
+            with short_scores_placeholder.container():
+                st.subheader("Top 20 Short Momentum Scores:")
+                st.dataframe(short_df[['Symbol', 'Momentum Score', 'Change']])
+                avg_change_short = short_df['Change'].mean()
+                st.metric("Average Change in Short Scores", f"{avg_change_short:.2f}")
+
             time.sleep(3600)
-        
+
         except Exception as e:
-            logging.error(f"An error occurred during data fetching or processing: {str(e)}")
-            st.error(f"An error occurred during data fetching or processing: {str(e)}")
+            logging.error(f"An error occurred: {str(e)}")
+            st.error(f"An error occurred: {str(e)}")
             break
 
 if __name__ == "__main__":
