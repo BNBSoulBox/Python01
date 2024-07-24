@@ -109,7 +109,7 @@ intervals = {
 @st.cache_data(ttl=300)
 def fetch_all_data(symbol, exchange, screener, interval):
     try:
-        handler = TA_Handler(
+        handler = TA_handler(
             symbol=symbol,
             exchange=exchange,
             screener=screener,
@@ -174,7 +174,8 @@ def update_plot(df):
     ax.set_ylim(-2, 2)
     ax.set_xlabel('Timestamp')
     ax.set_ylabel('Momentum Score')
-    ax.legend()
+    ax.legend(loc='upper right')  # Specify legend location
+    
     ax.grid(True)
     
     plt.gcf().autofmt_xdate()
@@ -233,6 +234,10 @@ def main():
     plot_placeholder = st.empty()
     top_scores_placeholder = st.empty()
     
+    # Ensure the directory exists
+    if not os.path.exists('momentum_data'):
+        os.makedirs('momentum_data')
+    
     historical_file = 'momentum_data/historical_momentum_scores.csv'
     
     # Check if the historical file exists; if not, create an empty DataFrame
@@ -267,30 +272,23 @@ def main():
             else:
                 df = new_df
             
-            df['Average Momentum'] = df.groupby('Timestamp')['Momentum Score'].transform('mean')
-            
-            logging.info(f"DataFrame shape: {df.shape}")
-            logging.info(f"Unique timestamps: {df['Timestamp'].nunique()}")
-            logging.info(f"Unique symbols: {df['Symbol'].nunique()}")
-            
-            # Save the updated DataFrame to CSV
+            # Save the DataFrame to the CSV file
             df.to_csv(historical_file, index=False)
             
-            # Update plot
+            # Display the top 20 Momentum Scores
+            with top_scores_placeholder.container():
+                display_top_20_scores(results, historical_df)
+            
+            # Update the plot
             fig = update_plot(df)
             plot_placeholder.pyplot(fig)
             
-            # Display top 20 scores
-            top_scores_placeholder.empty()
-            display_top_20_scores(results, historical_df)
-            
-            # Sleep for a certain interval before the next update
-            time.sleep(60)  # Adjust as needed
-            
+            time.sleep(3600)
+        
         except Exception as e:
-            logging.error(f"An error occurred: {str(e)}")
-            st.error(f"An error occurred: {str(e)}")
-            time.sleep(600)  # Wait before retrying
+            logging.error(f"An error occurred during data fetching or processing: {str(e)}")
+            st.error(f"An error occurred during data fetching or processing: {str(e)}")
+            break
 
 if __name__ == "__main__":
     main()
