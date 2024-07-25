@@ -8,3 +8,4 @@ scikit-learn
 matplotlib
 tensorflow
 streamlit
+psycopg2-binary
