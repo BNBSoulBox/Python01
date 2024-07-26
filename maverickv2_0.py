@@ -1,227 +1,355 @@
 import streamlit as st
-import csv
 import pandas as pd
 import numpy as np
-from scipy.stats import pearsonr
 from tradingview_ta import TA_Handler, Interval
+from datetime import datetime, timezone, timedelta
+import time
+import matplotlib.pyplot as plt
+import logging
+from logging.handlers import RotatingFileHandler
+from sqlalchemy import create_engine
+from cachetools import TTLCache
+from collections import defaultdict
+
+# Set up logging with rotation
+log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+log_file = 'momentum_dashboard.log'
+log_handler = RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=2)
+log_handler.setFormatter(log_formatter)
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logger.addHandler(log_handler)
+
+# Error aggregation setup
+error_counts = defaultdict(int)
+last_log_time = time.time()
+
+# Database connection parameters
+DB_NAME = "maverick_qhyp"
+DB_USER = "maverick_qhyp_user"
+DB_PASSWORD = "IEn2tAiSR8rRrkdcQil1irtuOBENel61"
+DB_HOST = "dpg-cqh9dneehbks73a6poj0-a.oregon-postgres.render.com"
+DB_PORT = "5432"
+
+# Create SQLAlchemy engine
+db_url = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+engine = create_engine(db_url)
+
+# Set up caching
+cache = TTLCache(maxsize=1000, ttl=300)  # Cache with 5-minute TTL
+
+# Last cache clear time
+last_cache_clear = datetime.now()
+
+# Set the page config
+st.set_page_config(
+    page_title="Momentum Score Dashboard",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for dark theme and styles
+st.markdown("""
+    <style>
+    .css-18e3th9 {
+        background-color: #0e1117;
+        color: #ffffff;
+    }
+    .css-1lcbmhc {
+        background-color: #161a25;
+    }
+    .css-1d391kg {
+        color: #ffffff;
+    }
+    .stButton>button {
+        color: #ffffff;
+        background-color: #d4af37;
+        border-color: #d4af37;
+    }
+    .css-1offfwp e1h7wlp60 {
+        color: #ffffff;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # List of symbols to be analyzed
 symbols = [
-    "10000LADYSUSDT", "10000NFTUSDT", "1000BONKUSDT", "1000BTTUSDT", 
-    "1000FLOKIUSDT", "1000LUNCUSDT", "1000PEPEUSDT", "1000XECUSDT", 
-    "1INCHUSDT", "AAVEUSDT", "ACHUSDT", "ADAUSDT", "AGIXUSDT", 
-    "AGLDUSDT", "AKROUSDT", "ALGOUSDT", "ALICEUSDT", "ALPACAUSDT", 
-    "ALPHAUSDT", "AMBUSDT", "ANCUSDT", "ANKRUSDT", "ANTUSDT", 
-    "APEUSDT", "API3USDT", "APTUSDT", "ARUSDT", "ARBUSDT", "ARKUSDT", 
-    "ARKMUSDT", "ARPAUSDT", "ASTRUSDT", "ATAUSDT", "ATOMUSDT", 
-    "AUCTIONUSDT", "AUDIOUSDT", "AVAXUSDT", "AXSUSDT", "BADGERUSDT", 
-    "BAKEUSDT", "BALUSDT", "BANDUSDT", "BATUSDT", "BCHUSDT", 
-    "BELUSDT", "BICOUSDT", "BIGTIMEUSDT", "BITUSDT", "BLURUSDT", "BLZUSDT",
-    "BUSDUSDT", "C98USDT", "CEEKUSDT", "CELOUSDT", "CELRUSDT", "CFXUSDT",
-    "CHRUSDT", "CHZUSDT", "CKBUSDT", "COCOSUSDT", "COMBOUSDT", "COMPUSDT",
-    "COREUSDT", "COTIUSDT", "CREAMUSDT", "CROUSDT", "CRVUSDT", "CTCUSDT",
-    "CTKUSDT", "CTSIUSDT", "CVCUSDT", "CVXUSDT", "CYBERUSDT", "DARUSDT",
-    "DASHUSDT", "DENTUSDT", "DGBUSDT", "DODOUSDT", "DOGEUSDT", "DOTUSDT",
-    "DUSKUSDT", "DYDXUSDT", "EDUUSDT", "EGLDUSDT", "ENJUSDT", "ENSUSDT",
-    "EOSUSDT", "ETCUSDT", "ETHUSDT", "ETHWUSDT", "FETUSDT", "FILUSDT",
-    "FITFIUSDT", "FLOWUSDT", "FLRUSDT", "FORTHUSDT", "FRONTUSDT", "FTMUSDT",
-    "FTTUSDT", "FXSUSDT", "GALUSDT", "GALAUSDT", "GFTUSDT", "GLMUSDT",
-    "GLMRUSDT", "GMTUSDT", "GMXUSDT", "GPTUSDT", "GRTUSDT", "GSTUSDT",
-    "GTCUSDT", "HBARUSDT", "HFTUSDT", "HIFIUSDT", "HIGHUSDT", "HNTUSDT",
-    "HOOKUSDT", "HOTUSDT", "ICPUSDT", "ICXUSDT", "IDUSDT", "IDEXUSDT",
-    "ILVUSDT", "IMXUSDT", "INJUSDT", "IOSTUSDT", "IOTAUSDT", "IOTXUSDT",
-    "JASMYUSDT", "JOEUSDT", "JSTUSDT", "KASUSDT", "KAVAUSDT", "KDAUSDT",
-    "KEYUSDT", "KLAYUSDT", "KNCUSDT", "KSMUSDT", "LDOUSDT", "LEVERUSDT",
-    "LINAUSDT", "LINKUSDT", "LITUSDT", "LOOKSUSDT", "LOOMUSDT", "LPTUSDT",
-    "LQTYUSDT", "LRCUSDT", "LTCUSDT", "LUNAUSDT", "LUNA2USDT", "MAGICUSDT",
-    "MANAUSDT", "MASKUSDT", "MATICUSDT", "MAVUSDT", "MCUSDT", "MDTUSDT",
-    "MINAUSDT", "MKRUSDT", "MNTUSDT", "MTLUSDT", "MULTIUSDT", "NEARUSDT",
-    "NEOUSDT", "NKNUSDT", "NMRUSDT", "NTRNUSDT", "OCEANUSDT", "OGUSDT",
-    "OGNUSDT", "OMGUSDT", "ONEUSDT", "ONTUSDT", "OPUSDT", "ORBSUSDT",
-    "ORDIUSDT", "OXTUSDT", "PAXGUSDT", "PENDLEUSDT", "PEOPLEUSDT", "PERPUSDT",
-    "PHBUSDT", "PROMUSDT", "QNTUSDT", "QTUMUSDT", "RADUSDT", "RAYUSDT",
-    "RDNTUSDT", "REEFUSDT", "RENUSDT", "REQUSDT", "RLCUSDT", "RNDRUSDT",
-    "ROSEUSDT", "RPLUSDT", "RSRUSDT", "RSS3USDT", "RUNEUSDT", "RVNUSDT",
-    "SANDUSDT", "SCUSDT", "SCRTUSDT", "SEIUSDT", "SFPUSDT", "SHIB1000USDT",
-    "SKLUSDT", "SLPUSDT", "SNXUSDT", "SOLUSDT", "SPELLUSDT", "SRMUSDT",
-    "SSVUSDT", "STGUSDT", "STMXUSDT", "STORJUSDT", "STPTUSDT", "STRAXUSDT",
-    "STXUSDT", "SUIUSDT", "SUNUSDT", "SUSHIUSDT", "SWEATUSDT", "SXPUSDT",
-    "TUSDT", "THETAUSDT", "TLMUSDT", "TOMIUSDT", "TOMOUSDT", "TONUSDT",
-    "TRBUSDT", "TRUUSDT", "TRXUSDT", "TWTUSDT", "UMAUSDT", "UNFIUSDT",
-    "UNIUSDT", "USDCUSDT", "USTUSDT", "VETUSDT", "VGXUSDT", "VRAUSDT",
-    "WAVESUSDT", "WAXPUSDT", "WLDUSDT", "WOOUSDT", "WSMUSDT", "XCNUSDT",
-    "XEMUSDT", "XLMUSDT", "XMRUSDT", "XNOUSDT", "XRPUSDT", "XTZUSDT",
-    "XVGUSDT", "XVSUSDT", "YFIUSDT", "YFIIUSDT", "YGGUSDT", "ZBCUSDT",
-    "ZECUSDT", "ZENUSDT", "ZILUSDT", "ZRXUSDT"
+    "10000LADYSUSDT.P", "10000NFTUSDT.P", "1000BONKUSDT.P", "1000BTTUSDT.P", 
+    "1000FLOKIUSDT.P", "1000LUNCUSDT.P", "1000PEPEUSDT.P", "1000XECUSDT.P", 
+    "1INCHUSDT.P", "AAVEUSDT.P", "ACHUSDT.P", "ADAUSDT.P", "AGLDUSDT.P", 
+    "AKROUSDT.P", "ALGOUSDT.P", "ALICEUSDT.P", "ALPACAUSDT.P", 
+    "ALPHAUSDT.P", "AMBUSDT.P", "ANKRUSDT.P", "ANTUSDT.P", 
+    "APEUSDT.P", "API3USDT.P", "APTUSDT.P", "ARUSDT.P", "ARBUSDT.P", "ARKUSDT.P", 
+    "ARKMUSDT.P", "ARPAUSDT.P", "ASTRUSDT.P", "ATAUSDT.P", "ATOMUSDT.P", 
+    "AUCTIONUSDT.P", "AUDIOUSDT.P", "AVAXUSDT.P", "AXSUSDT.P", "BADGERUSDT.P", 
+    "BAKEUSDT.P", "BALUSDT.P", "BANDUSDT.P", "BATUSDT.P", "BCHUSDT.P", 
+    "BELUSDT.P", "BICOUSDT.P", "BIGTIMEUSDT.P", "BLURUSDT.P", "BLZUSDT.P",
+    "BTCUSDT.P", "C98USDT.P", "CEEKUSDT.P", "CELOUSDT.P", "CELRUSDT.P", "CFXUSDT.P",
+    "CHRUSDT.P", "CHZUSDT.P", "CKBUSDT.P", "COMBOUSDT.P", "COMPUSDT.P",
+    "COREUSDT.P", "COTIUSDT.P", "CROUSDT.P", "CRVUSDT.P", "CTCUSDT.P",
+    "CTKUSDT.P", "CTSIUSDT.P", "CVCUSDT.P", "CVXUSDT.P", "CYBERUSDT.P", "DARUSDT.P",
+    "DASHUSDT.P", "DENTUSDT.P", "DGBUSDT.P", "DODOUSDT.P", "DOGEUSDT.P", "DOTUSDT.P",
+    "DUSKUSDT.P", "DYDXUSDT.P", "EDUUSDT.P", "EGLDUSDT.P", "ENJUSDT.P", "ENSUSDT.P",
+    "EOSUSDT.P", "ETCUSDT.P", "ETHUSDT.P", "ETHWUSDT.P", "FILUSDT.P",
+    "FITFIUSDT.P", "FLOWUSDT.P", "FLRUSDT.P", "FORTHUSDT.P", "FRONTUSDT.P", "FTMUSDT.P",
+    "FXSUSDT.P", "GALAUSDT.P", "GFTUSDT.P", "GLMUSDT.P",
+    "GLMRUSDT.P", "GMTUSDT.P", "GMXUSDT.P", "GRTUSDT.P", "GTCUSDT.P", "HBARUSDT.P", 
+    "HFTUSDT.P", "HIFIUSDT.P", "HIGHUSDT.P", "HNTUSDT.P",
+    "HOOKUSDT.P", "HOTUSDT.P", "ICPUSDT.P", "ICXUSDT.P", "IDUSDT.P", "IDEXUSDT.P",
+    "ILVUSDT.P", "IMXUSDT.P", "INJUSDT.P", "IOSTUSDT.P", "IOTAUSDT.P", "IOTXUSDT.P",
+    "JASMYUSDT.P", "JOEUSDT.P", "JSTUSDT.P", "KASUSDT.P", "KAVAUSDT.P", "KDAUSDT.P",
+    "KEYUSDT.P", "KLAYUSDT.P", "KNCUSDT.P", "KSMUSDT.P", "LDOUSDT.P", "LEVERUSDT.P",
+    "LINAUSDT.P", "LINKUSDT.P", "LITUSDT.P", "LOOKSUSDT.P", "LOOMUSDT.P", "LPTUSDT.P",
+    "LQTYUSDT.P", "LRCUSDT.P", "LTCUSDT.P", "LUNA2USDT.P", "MAGICUSDT.P",
+    "MANAUSDT.P", "MASKUSDT.P", "MATICUSDT.P", "MAVUSDT.P", "MDTUSDT.P",
+    "MINAUSDT.P", "MKRUSDT.P", "MNTUSDT.P", "MTLUSDT.P", "NEARUSDT.P",
+    "NEOUSDT.P", "NKNUSDT.P", "NMRUSDT.P", "NTRNUSDT.P", "OGUSDT.P",
+    "OGNUSDT.P", "OMGUSDT.P", "ONEUSDT.P", "ONTUSDT.P", "OPUSDT.P", "ORBSUSDT.P",
+    "ORDIUSDT.P", "OXTUSDT.P", "PAXGUSDT.P", "PENDLEUSDT.P", "PEOPLEUSDT.P", "PERPUSDT.P",
+    "PHBUSDT.P", "PROMUSDT.P", "QNTUSDT.P", "QTUMUSDT.P", "RADUSDT.P", "RDNTUSDT.P", 
+    "REEFUSDT.P", "RENUSDT.P", "REQUSDT.P", "RLCUSDT.P", "ROSEUSDT.P", 
+    "RPLUSDT.P", "RSRUSDT.P", "RSS3USDT.P", "RUNEUSDT.P", "RVNUSDT.P",
+    "SANDUSDT.P", "SCUSDT.P", "SCRTUSDT.P", "SEIUSDT.P", "SFPUSDT.P", "SHIB1000USDT.P",
+    "SKLUSDT.P", "SLPUSDT.P", "SNXUSDT.P", "SOLUSDT.P", "SPELLUSDT.P", "SSVUSDT.P", 
+    "STGUSDT.P", "STMXUSDT.P", "STORJUSDT.P", "STPTUSDT.P", "STXUSDT.P", "SUIUSDT.P", 
+    "SUNUSDT.P", "SUSHIUSDT.P", "SWEATUSDT.P", "SXPUSDT.P",
+    "TUSDT.P", "THETAUSDT.P", "TLMUSDT.P", "TOMIUSDT.P", "TONUSDT.P",
+    "TRBUSDT.P", "TRUUSDT.P", "TRXUSDT.P", "TWTUSDT.P", "UMAUSDT.P", "UNFIUSDT.P",
+    "UNIUSDT.P", "USDCUSDT.P", "VETUSDT.P", "VGXUSDT.P", "VRAUSDT.P",
+    "WAVESUSDT.P", "WAXPUSDT.P", "WLDUSDT.P", "WOOUSDT.P", "XCNUSDT.P",
+    "XEMUSDT.P", "XLMUSDT.P", "XMRUSDT.P", "XNOUSDT.P", "XRPUSDT.P", "XTZUSDT.P",
+    "XVGUSDT.P", "XVSUSDT.P", "YFIUSDT.P", "YGGUSDT.P", "ZECUSDT.P", "ZENUSDT.P", "ZILUSDT.P", "ZRXUSDT.P"
 ]
 
-# Function to fetch data using TradingView TA Handler
-def fetch_all_data(symbol, exchange, screener, interval):
-    handler = TA_Handler(
-        symbol=symbol,
-        exchange=exchange,
-        screener=screener,
-        interval=interval,
-        timeout=None
-    )
-    analysis = handler.get_analysis()
-    return analysis
+# Configuration
+exchange = "BYBIT"
+screener = "crypto"
+intervals = {
+    Interval.INTERVAL_1_MINUTE: 0.1,
+    Interval.INTERVAL_5_MINUTES: 0.1,
+    Interval.INTERVAL_15_MINUTES: 0.2,
+    Interval.INTERVAL_30_MINUTES: 0.1,
+    Interval.INTERVAL_1_HOUR: 0.2,
+    Interval.INTERVAL_2_HOURS: 0.1,
+    Interval.INTERVAL_4_HOURS: 0.2,
+    Interval.INTERVAL_1_DAY: 0.1
+}
 
-# Function to save data to a CSV file
-def save_to_csv(data, filename='coin_analysis_data.csv'):
-    with open(filename, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Symbol', 'Interval', 'Category', 'Indicator', 'Value'])
-        for (symbol, interval), analysis in data.items():
-            if analysis is None:
-                continue
-            summary = analysis.summary
-            oscillators = analysis.oscillators
-            moving_averages = analysis.moving_averages
-            indicators = analysis.indicators
-
-            writer.writerow([symbol, interval, 'Summary', 'RECOMMENDATION', summary['RECOMMENDATION']])
-            writer.writerow([symbol, interval, 'Summary', 'BUY', summary['BUY']])
-            writer.writerow([symbol, interval, 'Summary', 'SELL', summary['SELL']])
-            writer.writerow([symbol, interval, 'Summary', 'NEUTRAL', summary['NEUTRAL']])
-
-            writer.writerow([symbol, interval, 'Oscillators', 'RECOMMENDATION', oscillators['RECOMMENDATION']])
-            for key, value in oscillators['COMPUTE'].items():
-                writer.writerow([symbol, interval, 'Oscillators', key, value])
-
-            writer.writerow([symbol, interval, 'Moving Averages', 'RECOMMENDATION', moving_averages['RECOMMENDATION']])
-            for key, value in moving_averages['COMPUTE'].items():
-                writer.writerow([symbol, interval, 'Moving Averages', key, value])
-
-            for key, value in indicators.items():
-                writer.writerow([symbol, interval, 'Indicators', key, value])
-
-# Function to calculate weighted pivot points
-def calculate_weighted_pivot(data, timeframes):
-    pivot_columns = ['Pivot.M.Classic.Middle', 'Pivot.M.Fibonacci.Middle', 'Pivot.M.Camarilla.Middle', 'Pivot.M.Woodie.Middle', 'Pivot.M.Demark.Middle']
-    pivot_data = {tf: [] for tf in timeframes}
-
-    for (symbol, interval), analysis in data.items():
-        if analysis is None:
-            continue
-        interval_str = interval
-        pivot_values = [analysis.indicators.get(pivot, 0) for pivot in pivot_columns]
-        pivot_data[interval_str].append(np.mean(pivot_values))
-
-    correlations = pd.DataFrame(index=timeframes, columns=timeframes)
-    for tf1 in timeframes:
-        for tf2 in timeframes:
-            if tf1 != tf2:
-                try:
-                    corr_values = pearsonr(pivot_data[tf1], pivot_data[tf2])[0]
-                    correlations.loc[tf1, tf2] = corr_values
-                except ValueError:
-                    correlations.loc[tf1, tf2] = 0
-            else:
-                correlations.loc[tf1, tf2] = 1.0
-
-    weights = correlations.mean(axis=1)
-    weighted_pivot = sum(weights[tf] * np.mean(pivot_data[tf]) for tf in timeframes if len(pivot_data[tf]) > 0) / sum(weights)
-
-    return weighted_pivot
-
-# Function to calculate ATR based on extracted data
-def calculate_atr(data, intervals):
-    atr_values = []
-    for (symbol, interval), analysis in data.items():
-        if analysis is None:
-            continue
-        high_prices = analysis.indicators.get('High', [])
-        low_prices = analysis.indicators.get('Low', [])
-        close_prices = analysis.indicators.get('Close', [])
-        if len(high_prices) > 1 and len(low_prices) > 1 and len(close_prices) > 1:
-            tr = np.max([np.array(high_prices) - np.array(low_prices),
-                         np.abs(np.array(high_prices) - np.array(close_prices[:-1])),
-                         np.abs(np.array(low_prices) - np.array(close_prices[:-1]))], axis=0)
-            atr = np.mean(tr)
-            atr_values.append(atr)
-    return np.mean(atr_values) if atr_values else 0
-
-# Function to set grid bot parameters
-def set_grid_bot_parameters(weighted_pivot, atr, safety_margin=0.5):
-    optimal_range = 2 * atr
-    safety_range = optimal_range * (1 + safety_margin)
-    entry_point = weighted_pivot - (optimal_range / 2)
-    exit_point = weighted_pivot + (optimal_range / 2)
+def log_error(error_message):
+    global last_log_time
+    error_counts[error_message] += 1
     
-    return entry_point, exit_point, safety_range
+    if time.time() - last_log_time > 300:  # Log every 5 minutes
+        for error, count in error_counts.items():
+            logging.error(f"Error occurred {count} times: {error}")
+        error_counts.clear()
+        last_log_time = time.time()
+
+@st.cache_data(ttl=3600)
+def fetch_all_data(symbol, exchange, screener, interval):
+    cache_key = f"{symbol}_{exchange}_{screener}_{interval}"
+    if cache_key in cache:
+        return cache[cache_key]
+    
+    try:
+        handler = TA_Handler(
+            symbol=symbol,
+            exchange=exchange,
+            screener=screener,
+            interval=interval,
+            timeout=None
+        )
+        analysis = handler.get_analysis()
+        cache[cache_key] = analysis
+        return analysis
+    except Exception as e:
+        log_error(f"Error fetching data for {symbol} on {interval}: {str(e)}")
+        return None
+
+def calculate_momentum_score(data):
+    weights = {'STRONG_BUY': 2, 'BUY': 1, 'NEUTRAL': 0, 'SELL': -1, 'STRONG_SELL': -2}
+    score = 0
+    for interval, analysis in data.items():
+        if analysis:
+            rating = analysis.summary['RECOMMENDATION'].upper()
+            score += weights.get(rating, 0)
+    return score
+
+@st.cache_data(ttl=3600)
+def get_historical_data():
+    query = """
+    SELECT * FROM momentum_scores 
+    WHERE "Timestamp" >= NOW() - INTERVAL '24 hours'
+    ORDER BY "Timestamp" DESC
+    """
+    return pd.read_sql(query, con=engine, parse_dates=['Timestamp'])
+
+def update_plot(df):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'], utc=True)
+    df = df.sort_values('Timestamp')
+    
+    # Reduce data points by resampling
+    df_resampled = df.set_index('Timestamp').resample('5T').mean().reset_index()
+    
+    avg_momentum = df_resampled['Average Momentum']
+    
+    for i in range(1, len(avg_momentum)):
+        start = df_resampled['Timestamp'].iloc[i-1]
+        end = df_resampled['Timestamp'].iloc[i]
+        y1 = avg_momentum.iloc[i-1]
+        y2 = avg_momentum.iloc[i]
+        
+        if y1 > 0.5 and y2 > 0.5:
+            color = 'green'
+        elif y1 < -0.5 and y2 < -0.5:
+            color = 'red'
+        elif -0.5 <= y1 <= 0.5 and -0.5 <= y2 <= 0.5:
+            color = 'grey'
+        else:
+            if y2 > 0.5:
+                color = 'green'
+            elif y2 < -0.5:
+                color = 'red'
+            else:
+                color = 'grey'
+        
+        ax.plot([start, end], [y1, y2], color=color)
+    
+    ax.plot([], [], color='blue', label='Average Total Momentum Scores')
+    
+    btc_data = df[df['Symbol'] == 'BTCUSDT.P']
+    if not btc_data.empty:
+        btc_data_resampled = btc_data.set_index('Timestamp').resample('5T').mean().reset_index()
+        ax.plot(btc_data_resampled['Timestamp'], btc_data_resampled['Momentum Score'], 
+                color='yellow', label='Momentum Score for BTCUSDT.P')
+    else:
+        logging.warning("No BTC data available for plotting")
+    
+    ax.axhline(y=0, color='black', linestyle='--')
+    
+    ax.set_ylim(-2, 2)
+    ax.set_xlabel('Timestamp (UTC)')
+    ax.set_ylabel('Momentum Score')
+    
+    # Place legend outside the plot
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    
+    ax.grid(True)
+    
+    plt.gcf().autofmt_xdate()
+    
+    # Adjust layout to prevent cutting off the legend
+    plt.tight_layout()
+    
+    return fig
+
+def display_top_20_scores(results, historical_df):
+    sorted_results = sorted(results, key=lambda x: x['Momentum Score'], reverse=True)
+    
+    long_df = pd.DataFrame(sorted_results[:20])
+    short_df = pd.DataFrame(sorted_results[-20:][::-1])
+    
+    for df in [long_df, short_df]:
+        if not df.empty:
+            df['Previous Score'] = df['Symbol'].map(historical_df.set_index('Symbol')['Momentum Score'].to_dict())
+            df['Change'] = df['Momentum Score'] - df['Previous Score'].fillna(0)
+            df['Momentum Score'] = df['Momentum Score'].round(2)
+            df['Change'] = df['Change'].round(2)
+    
+    return long_df, short_df
+
+def selective_cache_clear():
+    global last_cache_clear
+    current_time = datetime.now()
+    
+    if current_time - last_cache_clear >= timedelta(hours=1):
+        cache.clear()
+        logging.info("TTLCache cleared")
+        
+        for caching_function in [fetch_all_data, get_historical_data]:
+            caching_function.clear()
+        logging.info("Streamlit cache selectively cleared")
+        
+        last_cache_clear = current_time
 
 def main():
-    st.title('Crypto Analysis with TradingView TA')
+    st.title('Crypto Market Momentum Score Dashboard')
     
-    exchange = "BYBIT"
-    screener = "crypto"
-    intervals = [
-        Interval.INTERVAL_5_MINUTES,
-        Interval.INTERVAL_15_MINUTES,
-        Interval.INTERVAL_30_MINUTES,
-        Interval.INTERVAL_1_HOUR,
-        Interval.INTERVAL_2_HOURS,
-        Interval.INTERVAL_4_HOURS,
-        Interval.INTERVAL_1_DAY
-    ]
-
-    interval_str_map = {
-        Interval.INTERVAL_5_MINUTES: '5m',
-        Interval.INTERVAL_15_MINUTES: '15m',
-        Interval.INTERVAL_30_MINUTES: '30m',
-        Interval.INTERVAL_1_HOUR: '1h',
-        Interval.INTERVAL_2_HOURS: '2h',
-        Interval.INTERVAL_4_HOURS: '4h',
-        Interval.INTERVAL_1_DAY: '1d'
-    }
-
-    if st.button("Fetch Data"):
-        data = {}
-        errors = []
-        for symbol in symbols:
-            for interval in intervals:
-                try:
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        plot_placeholder = st.empty()
+    
+    with col2:
+        long_scores_placeholder = st.empty()
+        short_scores_placeholder = st.empty()
+    
+    while True:
+        try:
+            # Read existing data from PostgreSQL
+            df = get_historical_data()
+            df['Timestamp'] = df['Timestamp'].dt.tz_localize('UTC')
+            historical_df = df[['Symbol', 'Momentum Score']].copy()
+            
+            results = []
+            error_symbols = []
+            current_datetime = datetime.now(timezone.utc)
+            
+            for symbol in symbols:
+                data = {}
+                for interval, weight in intervals.items():
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
-                    data[(symbol, interval_str_map[interval])] = analysis
-                except Exception as e:
-                    errors.append(f"{symbol} at interval {interval_str_map[interval]}: {str(e)}")
-                    data[(symbol, interval_str_map[interval])] = None
-
-        if data:
-            save_to_csv(data)
-            st.success('Data has been saved to coin_analysis_data.csv')
-            st.download_button(
-                label="Download CSV",
-                data=open('coin_analysis_data.csv').read(),
-                file_name='coin_analysis_data.csv',
-                mime='text/csv'
-            )
-
-            timeframes = list(interval_str_map.values())
-            weighted_pivot = calculate_weighted_pivot(data, timeframes)
-            atr_value = calculate_atr(data, intervals)  # Calculate ATR based on the actual data
-            entry_point, exit_point, safety_range = set_grid_bot_parameters(weighted_pivot, atr_value)
-
-            matches = []
-
-            for (symbol, interval), analysis in data.items():
-                if analysis:
-                    current_price = analysis.indicators.get('close', 0)
-                    lower_bound = current_price * 0.999
-                    upper_bound = current_price * 1.001
-                    if lower_bound <= weighted_pivot <= upper_bound:
-                        matches.append(symbol)
-
-            if matches:
-                st.write("Symbols with Weighted Pivot Point within 0.1% range of the current price:")
-                for match in matches:
-                    st.write(match)
-            else:
-                st.write("No Matches")
-        
-        else:
-            st.warning("No data could be fetched for any symbol.")
+                    data[interval] = analysis
+                
+                if all(value is None for value in data.values()):
+                    error_symbols.append(symbol)
+                else:
+                    weighted_score = sum(weight * calculate_momentum_score({interval: data[interval]}) for interval, weight in intervals.items() if data[interval] is not None)
+                    results.append({"Symbol": symbol, "Momentum Score": weighted_score, "Timestamp": current_datetime})
+            
+            new_df = pd.DataFrame(results)
+            new_df['Average Momentum'] = new_df['Momentum Score'].mean()
+            
+            # Save the updated DataFrame to PostgreSQL
+            new_df.to_sql('momentum_scores', con=engine, if_exists='append', index=False)
+            
+            # Combine new data with historical data for plotting
+            df = pd.concat([df, new_df], ignore_index=True)
+            
+            # Update plot
+            fig = update_plot(df)
+            plot_placeholder.pyplot(fig)
+            
+            # Display top 20 scores
+            long_df, short_df = display_top_20_scores(results, historical_df)
+            
+            # Update the placeholders with the latest data
+            with long_scores_placeholder.container():
+                st.subheader("Top 20 Long Momentum Scores:")
+                st.dataframe(long_df[['Symbol', 'Momentum Score', 'Change']])
+                avg_change_long = long_df['Change'].mean()
+                st.metric("Average Change in Top 20 Long Scores", f"{avg_change_long:.2f}", f"{avg_change_long:.2f}")
+            
+            with short_scores_placeholder.container():
+                st.subheader("Top 20 Short Momentum Scores:")
+                st.dataframe(short_df[['Symbol', 'Momentum Score', 'Change']])
+                avg_change_short = short_df['Change'].mean()
+                st.metric("Average Change in Top 20 Short Scores", f"{avg_change_short:.2f}", f"{avg_change_short:.2f}")
+            
+            # Selectively clear cache
+            selective_cache_clear()
+            
+            # Sleep for a certain interval before the next update
+            time.sleep(60)  # Adjust as needed
+            
+        except Exception as e:
+            log_error(f"An error occurred: {str(e)}")
+            st.error(f"An error occurred. Please check the logs for details.")
+            time.sleep(600)  # Wait before retrying
 
 if __name__ == "__main__":
     main()
