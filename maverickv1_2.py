@@ -2,19 +2,34 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from tradingview_ta import TA_Handler, Interval
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import time
-import os
 import matplotlib.pyplot as plt
 import logging
+from sqlalchemy import create_engine
+from cachetools import TTLCache
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Database connection parameters
+DB_NAME = "maverick_qhyp"
+DB_USER = "maverick_qhyp_user"
+DB_PASSWORD = "IEn2tAiSR8rRrkdcQil1irtuOBENel61"
+DB_HOST = "dpg-cqh9dneehbks73a6poj0-a.oregon-postgres.render.com"
+DB_PORT = "5432"
+
+# Create SQLAlchemy engine
+db_url = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+engine = create_engine(db_url)
+
+# Set up caching
+cache = TTLCache(maxsize=1000, ttl=300)  # Cache with 5-minute TTL
+
 # Set the page config
 st.set_page_config(
-    page_title="Momentum Score",
-    page_icon="📊",
+    page_title="Momentum Score Dashboard",
+    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -43,7 +58,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# List of symbols to be analyzed
+# List of symbols to be analyzed (kept the same)
 symbols = [
     "10000LADYSUSDT.P", "10000NFTUSDT.P", "1000BONKUSDT.P", "1000BTTUSDT.P", 
     "1000FLOKIUSDT.P", "1000LUNCUSDT.P", "1000PEPEUSDT.P", "1000XECUSDT.P", 
@@ -108,6 +123,10 @@ intervals = {
 
 @st.cache_data(ttl=300)
 def fetch_all_data(symbol, exchange, screener, interval):
+    cache_key = f"{symbol}_{exchange}_{screener}_{interval}"
+    if cache_key in cache:
+        return cache[cache_key]
+    
     try:
         handler = TA_Handler(
             symbol=symbol,
@@ -117,6 +136,7 @@ def fetch_all_data(symbol, exchange, screener, interval):
             timeout=None
         )
         analysis = handler.get_analysis()
+        cache[cache_key] = analysis
         return analysis
     except Exception as e:
         logging.error(f"Error fetching data for {symbol} on {interval}: {str(e)}")
@@ -131,10 +151,19 @@ def calculate_momentum_score(data):
             score += weights.get(rating, 0)
     return score
 
+@st.cache_data(ttl=300)
+def get_historical_data():
+    query = """
+    SELECT * FROM momentum_scores 
+    WHERE "Timestamp" >= NOW() - INTERVAL '24 hours'
+    ORDER BY "Timestamp" DESC
+    """
+    return pd.read_sql(query, con=engine, parse_dates=['Timestamp'])
+
 def update_plot(df):
     fig, ax = plt.subplots(figsize=(12, 6))
     
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'], utc=True)
     df = df.sort_values('Timestamp')
     
     avg_momentum = df['Average Momentum']
@@ -161,18 +190,18 @@ def update_plot(df):
         
         ax.plot([start, end], [y1, y2], color=color)
     
-    ax.plot([], [], color='blue', label='Promedio Total de Puntuaciones de Momentum')
+    ax.plot([], [], color='blue', label='Average Total Momentum Scores')
     
     btc_data = df[df['Symbol'] == 'BTCUSDT.P']
     if not btc_data.empty:
-        ax.plot(btc_data['Timestamp'], btc_data['Momentum Score'], color='yellow', label='Puntuacion de Momentum para BTCUSDT.P')
+        ax.plot(btc_data['Timestamp'], btc_data['Momentum Score'], color='yellow', label='Momentum Score for BTCUSDT.P')
     else:
         logging.warning("No BTC data available for plotting")
     
     ax.axhline(y=0, color='black', linestyle='--')
     
     ax.set_ylim(-2, 2)
-    ax.set_xlabel('Timestamp')
+    ax.set_xlabel('Timestamp (UTC)')
     ax.set_ylabel('Momentum Score')
     ax.legend()
     ax.grid(True)
@@ -182,10 +211,8 @@ def update_plot(df):
     return fig
 
 def display_top_20_scores(results, historical_df):
-    # Sort results by Momentum Score
     sorted_results = sorted(results, key=lambda x: x['Momentum Score'], reverse=True)
     
-    # Prepare dataframes for display
     long_df = pd.DataFrame(sorted_results[:20])
     short_df = pd.DataFrame(sorted_results[-20:][::-1])
     
@@ -199,27 +226,22 @@ def display_top_20_scores(results, historical_df):
     return long_df, short_df
 
 def main():
-    st.title('Crypto Market Momentum Score')
+    st.title('Crypto Market Momentum Score Dashboard')
     
     plot_placeholder = st.empty()
     long_scores_placeholder = st.empty()
     short_scores_placeholder = st.empty()
     
-    historical_file = 'momentum_data/historical_momentum_scores.csv'
-    
-    # Check if the historical file exists; if not, create an empty DataFrame
-    if os.path.exists(historical_file):
-        df = pd.read_csv(historical_file, parse_dates=['Timestamp'])
-        historical_df = df[['Symbol', 'Momentum Score']].copy()
-    else:
-        df = pd.DataFrame(columns=["Symbol", "Momentum Score", "Timestamp"])
-        historical_df = pd.DataFrame(columns=["Symbol", "Momentum Score"])
-    
     while True:
         try:
+            # Read existing data from PostgreSQL
+            df = get_historical_data()
+            df['Timestamp'] = df['Timestamp'].dt.tz_localize('UTC')
+            historical_df = df[['Symbol', 'Momentum Score']].copy()
+            
             results = []
             error_symbols = []
-            current_datetime = datetime.now()
+            current_datetime = datetime.now(timezone.utc)
             
             for symbol in symbols:
                 data = {}
@@ -234,15 +256,13 @@ def main():
                     results.append({"Symbol": symbol, "Momentum Score": weighted_score, "Timestamp": current_datetime})
             
             new_df = pd.DataFrame(results)
-            if not df.empty:
-                df = pd.concat([df, new_df], ignore_index=True)
-            else:
-                df = new_df
+            new_df['Average Momentum'] = new_df['Momentum Score'].mean()
             
-            df['Average Momentum'] = df.groupby('Timestamp')['Momentum Score'].transform('mean')
+            # Save the updated DataFrame to PostgreSQL
+            new_df.to_sql('momentum_scores', con=engine, if_exists='append', index=False)
             
-            # Save the updated DataFrame to CSV
-            df.to_csv(historical_file, index=False)
+            # Combine new data with historical data for plotting
+            df = pd.concat([df, new_df], ignore_index=True)
             
             # Update plot
             fig = update_plot(df)
