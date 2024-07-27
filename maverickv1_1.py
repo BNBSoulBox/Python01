@@ -2,19 +2,34 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from tradingview_ta import TA_Handler, Interval
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import time
-import os
 import matplotlib.pyplot as plt
 import logging
+from sqlalchemy import create_engine
+from cachetools import TTLCache
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Database connection parameters
+DB_NAME = "maverick_qhyp"
+DB_USER = "maverick_qhyp_user"
+DB_PASSWORD = "IEn2tAiSR8rRrkdcQil1irtuOBENel61"
+DB_HOST = "dpg-cqh9dneehbks73a6poj0-a.oregon-postgres.render.com"
+DB_PORT = "5432"
+
+# Create SQLAlchemy engine
+db_url = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+engine = create_engine(db_url)
+
+# Set up caching
+cache = TTLCache(maxsize=1000, ttl=300)  # Cache with 5-minute TTL
+
 # Set the page config
 st.set_page_config(
-    page_title="Momentum Score",
-    page_icon="📊",
+    page_title="Momentum Score Dashboard",
+    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -43,7 +58,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# List of symbols to be analyzed
+# List of symbols to be analyzed (kept the same)
 symbols = [
     "10000LADYSUSDT.P", "10000NFTUSDT.P", "1000BONKUSDT.P", "1000BTTUSDT.P", 
     "1000FLOKIUSDT.P", "1000LUNCUSDT.P", "1000PEPEUSDT.P", "1000XECUSDT.P", 
@@ -108,6 +123,10 @@ intervals = {
 
 @st.cache_data(ttl=300)
 def fetch_all_data(symbol, exchange, screener, interval):
+    cache_key = f"{symbol}_{exchange}_{screener}_{interval}"
+    if cache_key in cache:
+        return cache[cache_key]
+    
     try:
         handler = TA_Handler(
             symbol=symbol,
@@ -117,6 +136,7 @@ def fetch_all_data(symbol, exchange, screener, interval):
             timeout=None
         )
         analysis = handler.get_analysis()
+        cache[cache_key] = analysis
         return analysis
     except Exception as e:
         logging.error(f"Error fetching data for {symbol} on {interval}: {str(e)}")
@@ -131,20 +151,29 @@ def calculate_momentum_score(data):
             score += weights.get(rating, 0)
     return score
 
-def update_plot(df, selected_symbol=None):
+@st.cache_data(ttl=300)
+def get_historical_data():
+    query = """
+    SELECT * FROM momentum_scores 
+    WHERE "Timestamp" >= NOW() - INTERVAL '24 hours'
+    ORDER BY "Timestamp" DESC
+    """
+    return pd.read_sql(query, con=engine, parse_dates=['Timestamp'])
+
+def update_plot(df):
     fig, ax = plt.subplots(figsize=(12, 6))
-
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+    
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'], utc=True)
     df = df.sort_values('Timestamp')
-
+    
     avg_momentum = df['Average Momentum']
-
+    
     for i in range(1, len(avg_momentum)):
         start = df['Timestamp'].iloc[i-1]
         end = df['Timestamp'].iloc[i]
         y1 = avg_momentum.iloc[i-1]
         y2 = avg_momentum.iloc[i]
-
+        
         if y1 > 0.5 and y2 > 0.5:
             color = 'green'
         elif y1 < -0.5 and y2 < -0.5:
@@ -158,116 +187,110 @@ def update_plot(df, selected_symbol=None):
                 color = 'red'
             else:
                 color = 'grey'
-
+        
         ax.plot([start, end], [y1, y2], color=color)
-
-    ax.plot([], [], color='blue', label='Promedio Total de Puntuaciones de Momentum')
-
-    if selected_symbol:
-        selected_data = df[df['Symbol'] == selected_symbol]
-        if not selected_data.empty:
-            ax.plot(selected_data['Timestamp'], selected_data['Momentum Score'], color='yellow', linestyle='--', label=f'Momentum Score for {selected_symbol}')
-        else:
-            logging.warning(f"No data available for plotting {selected_symbol}")
-
+    
+    ax.plot([], [], color='blue', label='Average Total Momentum Scores')
+    
+    btc_data = df[df['Symbol'] == 'BTCUSDT.P']
+    if not btc_data.empty:
+        ax.plot(btc_data['Timestamp'], btc_data['Momentum Score'], color='yellow', label='Momentum Score for BTCUSDT.P')
+    else:
+        logging.warning("No BTC data available for plotting")
+    
     ax.axhline(y=0, color='black', linestyle='--')
-
+    
     ax.set_ylim(-2, 2)
-    ax.set_xlabel('Timestamp')
+    ax.set_xlabel('Timestamp (UTC)')
     ax.set_ylabel('Momentum Score')
     ax.legend()
     ax.grid(True)
-
+    
     plt.gcf().autofmt_xdate()
-
+    
     return fig
 
-# Function to display top 20 scores and return selected symbol
 def display_top_20_scores(results, historical_df):
     sorted_results = sorted(results, key=lambda x: x['Momentum Score'], reverse=True)
-
+    
     long_df = pd.DataFrame(sorted_results[:20])
     short_df = pd.DataFrame(sorted_results[-20:][::-1])
-
+    
     for df in [long_df, short_df]:
         if not df.empty:
             df['Previous Score'] = df['Symbol'].map(historical_df.set_index('Symbol')['Momentum Score'].to_dict())
             df['Change'] = df['Momentum Score'] - df['Previous Score'].fillna(0)
             df['Momentum Score'] = df['Momentum Score'].round(2)
             df['Change'] = df['Change'].round(2)
-
+    
     return long_df, short_df
 
-# Main function to run the Streamlit app
 def main():
-    st.title('Crypto Market Momentum Score')
-
+    st.title('Crypto Market Momentum Score Dashboard')
+    
     plot_placeholder = st.empty()
     long_scores_placeholder = st.empty()
     short_scores_placeholder = st.empty()
-
-    historical_file = 'momentum_data/historical_momentum_scores.csv'
-
-    if os.path.exists(historical_file):
-        df = pd.read_csv(historical_file, parse_dates=['Timestamp'])
-        historical_df = df[['Symbol', 'Momentum Score']].copy()
-    else:
-        df = pd.DataFrame(columns=["Symbol", "Momentum Score", "Timestamp"])
-        historical_df = pd.DataFrame(columns=["Symbol", "Momentum Score"])
-
+    
     while True:
         try:
+            # Read existing data from PostgreSQL
+            df = get_historical_data()
+            df['Timestamp'] = df['Timestamp'].dt.tz_localize('UTC')
+            historical_df = df[['Symbol', 'Momentum Score']].copy()
+            
             results = []
             error_symbols = []
-            current_datetime = datetime.now()
-
+            current_datetime = datetime.now(timezone.utc)
+            
             for symbol in symbols:
                 data = {}
                 for interval, weight in intervals.items():
                     analysis = fetch_all_data(symbol, exchange, screener, interval)
                     data[interval] = analysis
-
+                
                 if all(value is None for value in data.values()):
                     error_symbols.append(symbol)
                 else:
                     weighted_score = sum(weight * calculate_momentum_score({interval: data[interval]}) for interval, weight in intervals.items() if data[interval] is not None)
                     results.append({"Symbol": symbol, "Momentum Score": weighted_score, "Timestamp": current_datetime})
-
+            
             new_df = pd.DataFrame(results)
-            if not df.empty:
-                df = pd.concat([df, new_df], ignore_index=True)
-            else:
-                df = new_df
-
-            df['Average Momentum'] = df.groupby('Timestamp')['Momentum Score'].transform('mean')
-
-            df.to_csv(historical_file, index=False)
-
-            long_df, short_df = display_top_20_scores(results, historical_df)
-
-            selected_symbol = st.selectbox("Select Symbol to Highlight", options=long_df['Symbol'].tolist() + short_df['Symbol'].tolist())
-
-            fig = update_plot(df, selected_symbol=selected_symbol)
+            new_df['Average Momentum'] = new_df['Momentum Score'].mean()
+            
+            # Save the updated DataFrame to PostgreSQL
+            new_df.to_sql('momentum_scores', con=engine, if_exists='append', index=False)
+            
+            # Combine new data with historical data for plotting
+            df = pd.concat([df, new_df], ignore_index=True)
+            
+            # Update plot
+            fig = update_plot(df)
             plot_placeholder.pyplot(fig)
-
+            
+            # Display top 20 scores
+            long_df, short_df = display_top_20_scores(results, historical_df)
+            
+            # Update the placeholders with the latest data
             with long_scores_placeholder.container():
                 st.subheader("Top 20 Long Momentum Scores:")
                 st.dataframe(long_df[['Symbol', 'Momentum Score', 'Change']])
                 avg_change_long = long_df['Change'].mean()
-                st.metric("Average Change in Long Scores", f"{avg_change_long:.2f}")
-
+                st.metric("Average Change in Top 20 Long Scores", f"{avg_change_long:.2f}", f"{avg_change_long:.2f}")
+            
             with short_scores_placeholder.container():
                 st.subheader("Top 20 Short Momentum Scores:")
                 st.dataframe(short_df[['Symbol', 'Momentum Score', 'Change']])
                 avg_change_short = short_df['Change'].mean()
-                st.metric("Average Change in Short Scores", f"{avg_change_short:.2f}")
-
-            time.sleep(3600)
-
+                st.metric("Average Change in Top 20 Short Scores", f"{avg_change_short:.2f}", f"{avg_change_short:.2f}")
+            
+            # Sleep for a certain interval before the next update
+            time.sleep(60)  # Adjust as needed
+            
         except Exception as e:
             logging.error(f"An error occurred: {str(e)}")
             st.error(f"An error occurred: {str(e)}")
-            break
+            time.sleep(600)  # Wait before retrying
 
 if __name__ == "__main__":
     main()
