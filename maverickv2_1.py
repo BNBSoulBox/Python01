@@ -1,182 +1,276 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error
+from datetime import datetime, timezone, timedelta
 import matplotlib.pyplot as plt
-import io
+import logging
+from sqlalchemy import create_engine
+import time  # Add this import
 
-# Check TensorFlow installation
-try:
-    import tensorflow as tf
-    from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import LSTM, Dense
-except ImportError as e:
-    st.error("TensorFlow is not installed correctly. Please ensure you have TensorFlow installed in your environment.")
-    raise e
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Database connection parameters
+DB_NAME = "maverick_qhyp"
+DB_USER = "maverick_qhyp_user"
+DB_PASSWORD = "IEn2tAiSR8rRrkdcQil1irtuOBENel61"
+DB_HOST = "dpg-cqh9dneehbks73a6poj0-a.oregon-postgres.render.com"
+DB_PORT = "5432"
+
+# Create SQLAlchemy engine
+db_url = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+engine = create_engine(db_url)
 
 # Set the page config
-st.set_page_config(page_title="Crypto Arbitrage Analysis", page_icon="🪙", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="Momentum Score Dashboard",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # Custom CSS for dark theme and styles
 st.markdown("""
     <style>
-    .css-18e3th9 { background-color: #0e1117; color: #ffffff; }
-    .css-1lcbmhc { background-color: #161a25; }
-    .css-1d391kg { color: #ffffff; }
-    .stButton>button { color: #ffffff; background-color: #d4af37; border-color: #d4af37; }
-    .css-1offfwp e1h7wlp60 { color: #ffffff; }
+    .css-18e3th9 {
+        background-color: #0e1117;
+        color: #ffffff;
+    }
+    .css-1lcbmhc {
+        background-color: #161a25;
+    }
+    .css-1d391kg {
+        color: #ffffff;
+    }
+    .stButton>button {
+        color: #ffffff;
+        background-color: #d4af37;
+        border-color: #d4af37;
+    }
+    .css-1offfwp e1h7wlp60 {
+        color: #ffffff;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# Function to load data from CSV files
-def load_data(files):
-    data = []
-    for file in files:
-        df = pd.read_csv(file)
-        data.append(df)
-    return pd.concat(data, ignore_index=True)
+# List of symbols (kept the same)
+symbols = [
+    "10000LADYSUSDT.P", "10000NFTUSDT.P", "1000BONKUSDT.P", "1000BTTUSDT.P", 
+    "1000FLOKIUSDT.P", "1000LUNCUSDT.P", "1000PEPEUSDT.P", "1000XECUSDT.P", 
+    "1INCHUSDT.P", "AAVEUSDT.P", "ACHUSDT.P", "ADAUSDT.P", "AGLDUSDT.P", 
+    "AKROUSDT.P", "ALGOUSDT.P", "ALICEUSDT.P", "ALPACAUSDT.P", 
+    "ALPHAUSDT.P", "AMBUSDT.P", "ANKRUSDT.P", "ANTUSDT.P", 
+    "APEUSDT.P", "API3USDT.P", "APTUSDT.P", "ARUSDT.P", "ARBUSDT.P", "ARKUSDT.P", 
+    "ARKMUSDT.P", "ARPAUSDT.P", "ASTRUSDT.P", "ATAUSDT.P", "ATOMUSDT.P", 
+    "AUCTIONUSDT.P", "AUDIOUSDT.P", "AVAXUSDT.P", "AXSUSDT.P", "BADGERUSDT.P", 
+    "BAKEUSDT.P", "BALUSDT.P", "BANDUSDT.P", "BATUSDT.P", "BCHUSDT.P", 
+    "BELUSDT.P", "BICOUSDT.P", "BIGTIMEUSDT.P", "BLURUSDT.P", "BLZUSDT.P",
+    "BTCUSDT.P", "C98USDT.P", "CEEKUSDT.P", "CELOUSDT.P", "CELRUSDT.P", "CFXUSDT.P",
+    "CHRUSDT.P", "CHZUSDT.P", "CKBUSDT.P", "COMBOUSDT.P", "COMPUSDT.P",
+    "COREUSDT.P", "COTIUSDT.P", "CROUSDT.P", "CRVUSDT.P", "CTCUSDT.P",
+    "CTKUSDT.P", "CTSIUSDT.P", "CVCUSDT.P", "CVXUSDT.P", "CYBERUSDT.P", "DARUSDT.P",
+    "DASHUSDT.P", "DENTUSDT.P", "DGBUSDT.P", "DODOUSDT.P", "DOGEUSDT.P", "DOTUSDT.P",
+    "DUSKUSDT.P", "DYDXUSDT.P", "EDUUSDT.P", "EGLDUSDT.P", "ENJUSDT.P", "ENSUSDT.P",
+    "EOSUSDT.P", "ETCUSDT.P", "ETHUSDT.P", "ETHWUSDT.P", "FILUSDT.P",
+    "FITFIUSDT.P", "FLOWUSDT.P", "FLRUSDT.P", "FORTHUSDT.P", "FRONTUSDT.P", "FTMUSDT.P",
+    "FXSUSDT.P", "GALAUSDT.P", "GFTUSDT.P", "GLMUSDT.P",
+    "GLMRUSDT.P", "GMTUSDT.P", "GMXUSDT.P", "GRTUSDT.P", "GTCUSDT.P", "HBARUSDT.P", 
+    "HFTUSDT.P", "HIFIUSDT.P", "HIGHUSDT.P", "HNTUSDT.P",
+    "HOOKUSDT.P", "HOTUSDT.P", "ICPUSDT.P", "ICXUSDT.P", "IDUSDT.P", "IDEXUSDT.P",
+    "ILVUSDT.P", "IMXUSDT.P", "INJUSDT.P", "IOSTUSDT.P", "IOTAUSDT.P", "IOTXUSDT.P",
+    "JASMYUSDT.P", "JOEUSDT.P", "JSTUSDT.P", "KASUSDT.P", "KAVAUSDT.P", "KDAUSDT.P",
+    "KEYUSDT.P", "KLAYUSDT.P", "KNCUSDT.P", "KSMUSDT.P", "LDOUSDT.P", "LEVERUSDT.P",
+    "LINAUSDT.P", "LINKUSDT.P", "LITUSDT.P", "LOOKSUSDT.P", "LOOMUSDT.P", "LPTUSDT.P",
+    "LQTYUSDT.P", "LRCUSDT.P", "LTCUSDT.P", "LUNA2USDT.P", "MAGICUSDT.P",
+    "MANAUSDT.P", "MASKUSDT.P", "MATICUSDT.P", "MAVUSDT.P", "MDTUSDT.P",
+    "MINAUSDT.P", "MKRUSDT.P", "MNTUSDT.P", "MTLUSDT.P", "NEARUSDT.P",
+    "NEOUSDT.P", "NKNUSDT.P", "NMRUSDT.P", "NTRNUSDT.P", "OGUSDT.P",
+    "OGNUSDT.P", "OMGUSDT.P", "ONEUSDT.P", "ONTUSDT.P", "OPUSDT.P", "ORBSUSDT.P",
+    "ORDIUSDT.P", "OXTUSDT.P", "PAXGUSDT.P", "PENDLEUSDT.P", "PEOPLEUSDT.P", "PERPUSDT.P",
+    "PHBUSDT.P", "PROMUSDT.P", "QNTUSDT.P", "QTUMUSDT.P", "RADUSDT.P", "RDNTUSDT.P", 
+    "REEFUSDT.P", "RENUSDT.P", "REQUSDT.P", "RLCUSDT.P", "ROSEUSDT.P", 
+    "RPLUSDT.P", "RSRUSDT.P", "RSS3USDT.P", "RUNEUSDT.P", "RVNUSDT.P",
+    "SANDUSDT.P", "SCUSDT.P", "SCRTUSDT.P", "SEIUSDT.P", "SFPUSDT.P", "SHIB1000USDT.P",
+    "SKLUSDT.P", "SLPUSDT.P", "SNXUSDT.P", "SOLUSDT.P", "SPELLUSDT.P", "SSVUSDT.P", 
+    "STGUSDT.P", "STMXUSDT.P", "STORJUSDT.P", "STPTUSDT.P", "STXUSDT.P", "SUIUSDT.P", 
+    "SUNUSDT.P", "SUSHIUSDT.P", "SWEATUSDT.P", "SXPUSDT.P",
+    "TUSDT.P", "THETAUSDT.P", "TLMUSDT.P", "TOMIUSDT.P", "TONUSDT.P",
+    "TRBUSDT.P", "TRUUSDT.P", "TRXUSDT.P", "TWTUSDT.P", "UMAUSDT.P", "UNFIUSDT.P",
+    "UNIUSDT.P", "USDCUSDT.P", "VETUSDT.P", "VGXUSDT.P", "VRAUSDT.P",
+    "WAVESUSDT.P", "WAXPUSDT.P", "WLDUSDT.P", "WOOUSDT.P", "XCNUSDT.P",
+    "XEMUSDT.P", "XLMUSDT.P", "XMRUSDT.P", "XNOUSDT.P", "XRPUSDT.P", "XTZUSDT.P",
+    "XVGUSDT.P", "XVSUSDT.P", "YFIUSDT.P", "YGGUSDT.P", "ZECUSDT.P", "ZENUSDT.P", "ZILUSDT.P", "ZRXUSDT.P"
+]
 
-# Function to preprocess data
-def preprocess_data(df):
-    if 'Fecha' not in df.columns:
-        raise KeyError("The required column 'Fecha' is missing from the data.")
-    try:
-        df['timestamp'] = pd.to_datetime(df['Fecha'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
-        if df['timestamp'].isnull().any():
-            st.warning("Some date formats did not match the expected format and were parsed as NaT.")
-            st.write(df[df['timestamp'].isnull()]['Fecha'].head())
-            df.dropna(subset=['timestamp'], inplace=True)
-    except Exception as e:
-        st.error(f"Error parsing dates: {e}")
-        st.write("Here are the first few 'Fecha' values for reference:")
-        st.write(df['Fecha'].head())
-        raise e
-    df.set_index('timestamp', inplace=True)
-    df.fillna(method='ffill', inplace=True)
-    return df
+@st.cache_data(ttl=120)
+def get_historical_data():
+    query = """
+    SELECT * FROM momentum_scores 
+    WHERE "Timestamp" >= NOW() - INTERVAL '24 hours'
+    ORDER BY "Timestamp" DESC
+    """
+    return pd.read_sql(query, con=engine, parse_dates=['Timestamp'])
 
-# Function to create LSTM sequences
-def create_lstm_sequences(data, time_steps=30):
-    X, y = [], []
-    for i in range(len(data) - time_steps):
-        X.append(data[i:i + time_steps])
-        y.append(data[i + time_steps, 0])
-    return np.array(X), np.array(y)
-
-# Upload CSV files
-uploaded_files = st.file_uploader("Upload CSV files", accept_multiple_files=True, type="csv")
-if uploaded_files:
-    raw_data = load_data(uploaded_files)
-    st.write("Column Names in Uploaded Data:", raw_data.columns)
-
-    try:
-        # Preprocess the data
-        data = preprocess_data(raw_data)
-        st.write("Preprocessed Data", data)
+def update_plot(df, selected_symbols):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'], utc=True)
+    df = df.sort_values('Timestamp')
+    
+    avg_momentum = df['Average Momentum']
+    
+    for i in range(1, len(avg_momentum)):
+        start = df['Timestamp'].iloc[i-1]
+        end = df['Timestamp'].iloc[i]
+        y1 = avg_momentum.iloc[i-1]
+        y2 = avg_momentum.iloc[i]
         
-        # Feature Engineering
-        data['return'] = data['Momentum Score'].pct_change()
-        data['volatility'] = data['return'].rolling(window=30).std()
-        data['momentum'] = data['Momentum Score'] - data['Momentum Score'].shift(30)
-        data.dropna(inplace=True)
-
-        st.write("Feature Engineered Data", data)
-
-        # Train-test split
-        X = data[['return', 'volatility', 'momentum']].values
-        y = data['Momentum Score'].shift(-1).dropna().values
-        X = X[:-1]  # Align features with target
-
-        # Prepare LSTM data
-        time_steps = 30
-        X_lstm, y_lstm = create_lstm_sequences(X, time_steps)
-        X_train_lstm, X_test_lstm, y_train_lstm, y_test_lstm = train_test_split(X_lstm, y_lstm, test_size=0.2, random_state=42)
-
-        # Scaling for LSTM
-        scaler = StandardScaler()
-        X_train_scaled_lstm = scaler.fit_transform(X_train_lstm.reshape(-1, X_train_lstm.shape[-1])).reshape(X_train_lstm.shape)
-        X_test_scaled_lstm = scaler.transform(X_test_lstm.reshape(-1, X_test_lstm.shape[-1])).reshape(X_test_lstm.shape)
-
-        # LSTM Model
-        lstm_model = Sequential([
-            LSTM(50, return_sequences=True, input_shape=(time_steps, X_train_scaled_lstm.shape[2])),
-            LSTM(50),
-            Dense(1)
-        ])
-        lstm_model.compile(optimizer='adam', loss='mse')
-        lstm_model.fit(X_train_scaled_lstm, y_train_lstm, epochs=50, batch_size=32, validation_data=(X_test_scaled_lstm, y_test_lstm))
-
-        # LSTM Predictions
-        y_pred_lstm = lstm_model.predict(X_test_scaled_lstm)
-        lstm_mse = mean_squared_error(y_test_lstm, y_pred_lstm)
-
-        st.write(f"LSTM Mean Squared Error: {lstm_mse}")
-
-        # Scaling for other models
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_test_scaled = scaler.transform(X_test)
-
-        # Random Forest Model
-        rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
-        rf_model.fit(X_train_scaled, y_train)
-        y_pred_rf = rf_model.predict(X_test_scaled)
-        rf_mse = mean_squared_error(y_test, y_pred_rf)
-
-        # Linear Regression Model
-        lr_model = LinearRegression()
-        lr_model.fit(X_train_scaled, y_train)
-        y_pred_lr = lr_model.predict(X_test_scaled)
-        lr_mse = mean_squared_error(y_test, y_pred_lr)
-
-        st.write(f"Random Forest MSE: {rf_mse}")
-        st.write(f"Linear Regression MSE: {lr_mse}")
-
-        # Visualization
-        plt.figure(figsize=(10, 5))
-        plt.plot(y_test, label='Actual')
-        plt.plot(y_pred_rf, label='Random Forest Predictions')
-        plt.plot(y_pred_lr, label='Linear Regression Predictions')
-        plt.plot(y_pred_lstm, label='LSTM Predictions')
-        plt.legend()
-        st.pyplot(plt)
-
-        # Arbitrage Detection with LSTM
-        lstm_input_data = scaler.transform(data[['return', 'volatility', 'momentum']].values[-time_steps:])
-        lstm_input_data = lstm_input_data.reshape((1, time_steps, lstm_input_data.shape[1]))
-        data['lstm_pred'] = lstm_model.predict(lstm_input_data).flatten()
-
-        data['rf_pred'] = rf_model.predict(scaler.transform(data[['return', 'volatility', 'momentum']].fillna(0)))
-        data['lr_pred'] = lr_model.predict(scaler.transform(data[['return', 'volatility', 'momentum']].fillna(0)))
+        if y1 > 0.5 and y2 > 0.5:
+            color = 'green'
+        elif y1 < -0.5 and y2 < -0.5:
+            color = 'red'
+        elif -0.5 <= y1 <= 0.5 and -0.5 <= y2 <= 0.5:
+            color = 'grey'
+        else:
+            if y2 > 0.5:
+                color = 'green'
+            elif y2 < -0.5:
+                color = 'red'
+            else:
+                color = 'grey'
         
-        data['rf_diff'] = np.abs(data['Momentum Score'] - data['rf_pred'])
-        data['lr_diff'] = np.abs(data['Momentum Score'] - data['lr_pred'])
-        data['lstm_diff'] = np.abs(data['Momentum Score'] - data['lstm_pred'])
-        
-        data['signal'] = np.where(data['lstm_pred'] > data['Momentum Score'], 1, -1)  # Buy signal if prediction > current price
-        
-        # Filter by the latest date and then sort by the smallest difference to select top 20 results
-        latest_date = data.index.max()
-        recent_data = data[data.index.date == latest_date.date()]
-        display_data = recent_data.sort_values(by=['lstm_diff', 'rf_diff', 'lr_diff']).head(20)
-        
-        st.write("Top 20 Arbitrage Signals", display_data[['Symbol', 'Momentum Score', 'lstm_pred', 'rf_pred', 'lr_pred', 'lstm_diff', 'rf_diff', 'lr_diff', 'signal']])
+        ax.plot([start, end], [y1, y2], color=color)
+    
+    ax.plot([], [], color='blue', label='Average Total Momentum Scores')
+    
+    colors = ['yellow', 'purple', 'orange']
+    for i, symbol in enumerate(selected_symbols):
+        symbol_data = df[df['Symbol'] == symbol]
+        if not symbol_data.empty:
+            ax.plot(symbol_data['Timestamp'], symbol_data['Momentum Score'], color=colors[i], label=f'Momentum Score for {symbol}')
+        else:
+            logging.warning(f"No data available for plotting {symbol}")
+    
+    ax.axhline(y=0, color='black', linestyle='--')
+    
+    ax.set_ylim(-2, 2)
+    ax.set_xlabel('Timestamp (UTC)')
+    ax.set_ylabel('Momentum Score')
+    ax.legend()
+    ax.grid(True)
+    
+    plt.gcf().autofmt_xdate()
+    
+    return fig
 
-        # Option to download the results
-        csv_buffer = io.StringIO()
-        display_data[['Symbol', 'Momentum Score', 'lstm_pred', 'rf_pred', 'lr_pred', 'lstm_diff', 'rf_diff', 'lr_diff', 'signal']].to_csv(csv_buffer)
-        csv_data = csv_buffer.getvalue()
-        st.download_button(
-            label="Download Arbitrage Signals as CSV",
-            data=csv_data,
-            file_name='arbitrage_signals.csv',
-            mime='text/csv'
-        )
-    except KeyError as e:
-        st.error(f"Data preprocessing error: {e}")
-else:
-    st.write("Please upload CSV files to start the analysis.")
+def display_top_20_scores(results, historical_df):
+    sorted_results = sorted(results, key=lambda x: x['Momentum Score'], reverse=True)
+    
+    long_df = pd.DataFrame(sorted_results[:20])
+    short_df = pd.DataFrame(sorted_results[-20:][::-1])
+    
+    for df in [long_df, short_df]:
+        if not df.empty:
+            df['Previous Score'] = df['Symbol'].map(historical_df.set_index('Symbol')['Momentum Score'].to_dict())
+            df['Change'] = df['Momentum Score'] - df['Previous Score'].fillna(0)
+            df['Momentum Score'] = df['Momentum Score'].round(2)
+            df['Change'] = df['Change'].round(2)
+    
+    return long_df, short_df
+
+def display_filtered_scores(results, historical_df):
+    df = pd.DataFrame(results)
+    df['Previous Score'] = df['Symbol'].map(historical_df.set_index('Symbol')['Momentum Score'].to_dict())
+    df['Change'] = df['Momentum Score'] - df['Previous Score'].fillna(0)
+    df['Momentum Score'] = df['Momentum Score'].round(2)
+    df['Change'] = df['Change'].round(2)
+    
+    positive_filter = (df['Momentum Score'].between(0.1, 0.4)) & (df['Change'].between(1.1, 1.5))
+    negative_filter = (df['Momentum Score'].between(-0.4, -0.1)) & (df['Change'].between(-1.5, -1.1))
+    
+    positive_df = df[positive_filter].sort_values('Change', ascending=False)
+    negative_df = df[negative_filter].sort_values('Change', ascending=True)
+    
+    return positive_df, negative_df
+
+def main():
+    st.title('Crypto Market Momentum Score Dashboard')
+    
+    # Sidebar for symbol selection
+    st.sidebar.title("Symbol Selection")
+    selected_symbols = st.sidebar.multiselect(
+        "Select up to three symbols to plot (including BTCUSDT.P)",
+        symbols,
+        default=["BTCUSDT.P"],
+        max_selections=3
+    )
+    
+    if "BTCUSDT.P" not in selected_symbols:
+        st.sidebar.warning("BTCUSDT.P is always included in the plot.")
+        selected_symbols = ["BTCUSDT.P"] + selected_symbols[:2]
+    
+    plot_placeholder = st.empty()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    long_scores_placeholder = col1.empty()
+    short_scores_placeholder = col1.empty()
+    
+    metrics_placeholder = col2.empty()
+    
+    positive_filter_placeholder = col3.empty()
+    negative_filter_placeholder = col3.empty()
+    
+    while True:
+        try:
+            # Read existing data from PostgreSQL
+            df = get_historical_data()
+            df['Timestamp'] = df['Timestamp'].dt.tz_localize('UTC')
+            historical_df = df[['Symbol', 'Momentum Score']].copy()
+            
+            # Get the latest results
+            latest_results = df[df['Timestamp'] == df['Timestamp'].max()].to_dict('records')
+            
+            # Update plot
+            fig = update_plot(df, selected_symbols)
+            plot_placeholder.pyplot(fig)
+            
+            # Display top 20 scores
+            long_df, short_df = display_top_20_scores(latest_results, historical_df)
+            
+            # Display filtered scores
+            positive_df, negative_df = display_filtered_scores(latest_results, historical_df)
+            
+            # Update the placeholders with the latest data
+            with long_scores_placeholder.container():
+                st.subheader("Top 20 Long Momentum Scores:")
+                st.dataframe(long_df[['Symbol', 'Momentum Score', 'Change']])
+            
+            with short_scores_placeholder.container():
+                st.subheader("Top 20 Short Momentum Scores:")
+                st.dataframe(short_df[['Symbol', 'Momentum Score', 'Change']])
+            
+            with metrics_placeholder.container():
+                avg_change_long = long_df['Change'].mean()
+                avg_change_short = short_df['Change'].mean()
+                st.metric("Avg Change in Top 20 Long Scores", f"{avg_change_long:.2f}", f"{avg_change_long:.2f}")
+                st.metric("Avg Change in Top 20 Short Scores", f"{avg_change_short:.2f}", f"{avg_change_short:.2f}")
+            
+            with positive_filter_placeholder.container():
+                st.subheader("Symbols with Momentum 0.1 to 0.4 & Change 1.1 to 1.5:")
+                st.dataframe(positive_df[['Symbol', 'Momentum Score', 'Change']])
+            
+            with negative_filter_placeholder.container():
+                st.subheader("Symbols with Momentum -0.4 to -0.1 & Change -1.5 to -1.1:")
+                st.dataframe(negative_df[['Symbol', 'Momentum Score', 'Change']])
+            
+            # Sleep for 2 minutes before the next update
+            time.sleep(120)
+            
+        except Exception as e:
+            logging.error(f"An error occurred: {str(e)}")
+            st.error(f"An error occurred: {str(e)}")
+            time.sleep(600)  # Wait 10 minutes before retrying
+
+if __name__ == "__main__":
+    main()
