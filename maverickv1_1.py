@@ -160,7 +160,7 @@ def get_historical_data():
     """
     return pd.read_sql(query, con=engine, parse_dates=['Timestamp'])
 
-def update_plot(df):
+def update_plot(df, selected_symbol=None):
     fig, ax = plt.subplots(figsize=(12, 6))
     
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], utc=True)
@@ -198,6 +198,13 @@ def update_plot(df):
     else:
         logging.warning("No BTC data available for plotting")
     
+    if selected_symbol and selected_symbol != 'BTCUSDT.P':
+        selected_data = df[df['Symbol'] == selected_symbol]
+        if not selected_data.empty:
+            ax.plot(selected_data['Timestamp'], selected_data['Momentum Score'], color='blue', linestyle='--', label=f'Momentum Score for {selected_symbol}')
+        else:
+            logging.warning(f"No data available for plotting {selected_symbol}")
+    
     ax.axhline(y=0, color='black', linestyle='--')
     
     ax.set_ylim(-2, 2)
@@ -225,12 +232,39 @@ def display_top_20_scores(results, historical_df):
     
     return long_df, short_df
 
+def display_filtered_scores(results, historical_df):
+    df = pd.DataFrame(results)
+    df['Previous Score'] = df['Symbol'].map(historical_df.set_index('Symbol')['Momentum Score'].to_dict())
+    df['Change'] = df['Momentum Score'] - df['Previous Score'].fillna(0)
+    df['Momentum Score'] = df['Momentum Score'].round(2)
+    df['Change'] = df['Change'].round(2)
+    
+    positive_filter = (df['Momentum Score'].between(0.1, 0.4)) & (df['Change'].between(1.1, 1.5))
+    negative_filter = (df['Momentum Score'].between(-0.4, -0.1)) & (df['Change'].between(-1.5, -1.1))
+    
+    positive_df = df[positive_filter].sort_values('Change', ascending=False)
+    negative_df = df[negative_filter].sort_values('Change', ascending=True)
+    
+    return positive_df, negative_df
+
 def main():
     st.title('Crypto Market Momentum Score Dashboard')
     
+    # Sidebar for symbol selection
+    st.sidebar.title("Symbol Selection")
+    selected_symbol = st.sidebar.selectbox("Select a symbol to plot", symbols, index=symbols.index("BTCUSDT.P"))
+    
     plot_placeholder = st.empty()
-    long_scores_placeholder = st.empty()
-    short_scores_placeholder = st.empty()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    long_scores_placeholder = col1.empty()
+    short_scores_placeholder = col1.empty()
+    
+    metrics_placeholder = col2.empty()
+    
+    positive_filter_placeholder = col3.empty()
+    negative_filter_placeholder = col3.empty()
     
     while True:
         try:
@@ -265,24 +299,37 @@ def main():
             df = pd.concat([df, new_df], ignore_index=True)
             
             # Update plot
-            fig = update_plot(df)
+            fig = update_plot(df, selected_symbol)
             plot_placeholder.pyplot(fig)
             
             # Display top 20 scores
             long_df, short_df = display_top_20_scores(results, historical_df)
             
+            # Display filtered scores
+            positive_df, negative_df = display_filtered_scores(results, historical_df)
+            
             # Update the placeholders with the latest data
             with long_scores_placeholder.container():
                 st.subheader("Top 20 Long Momentum Scores:")
                 st.dataframe(long_df[['Symbol', 'Momentum Score', 'Change']])
-                avg_change_long = long_df['Change'].mean()
-                st.metric("Average Change in Top 20 Long Scores", f"{avg_change_long:.2f}", f"{avg_change_long:.2f}")
             
             with short_scores_placeholder.container():
                 st.subheader("Top 20 Short Momentum Scores:")
                 st.dataframe(short_df[['Symbol', 'Momentum Score', 'Change']])
+            
+            with metrics_placeholder.container():
+                avg_change_long = long_df['Change'].mean()
                 avg_change_short = short_df['Change'].mean()
-                st.metric("Average Change in Top 20 Short Scores", f"{avg_change_short:.2f}", f"{avg_change_short:.2f}")
+                st.metric("Avg Change in Top 20 Long Scores", f"{avg_change_long:.2f}", f"{avg_change_long:.2f}")
+                st.metric("Avg Change in Top 20 Short Scores", f"{avg_change_short:.2f}", f"{avg_change_short:.2f}")
+            
+            with positive_filter_placeholder.container():
+                st.subheader("Symbols with Momentum 0.1 to 0.4 & Change 1.1 to 1.5:")
+                st.dataframe(positive_df[['Symbol', 'Momentum Score', 'Change']])
+            
+            with negative_filter_placeholder.container():
+                st.subheader("Symbols with Momentum -0.4 to -0.1 & Change -1.5 to -1.1:")
+                st.dataframe(negative_df[['Symbol', 'Momentum Score', 'Change']])
             
             # Sleep for a certain interval before the next update
             time.sleep(60)  # Adjust as needed
