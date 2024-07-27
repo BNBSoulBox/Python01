@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from tradingview_ta import TA_Handler, Interval
 from datetime import datetime, timezone, timedelta
+import time
 import matplotlib.pyplot as plt
 import logging
 from sqlalchemy import create_engine
-import time  # Add this import
+from cachetools import TTLCache
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -20,6 +22,9 @@ DB_PORT = "5432"
 # Create SQLAlchemy engine
 db_url = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
 engine = create_engine(db_url)
+
+# Set up caching
+cache = TTLCache(maxsize=1000, ttl=300)  # Cache with 5-minute TTL
 
 # Set the page config
 st.set_page_config(
@@ -53,7 +58,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# List of symbols (kept the same)
+# List of symbols to be analyzed (kept the same)
 symbols = [
     "10000LADYSUSDT.P", "10000NFTUSDT.P", "1000BONKUSDT.P", "1000BTTUSDT.P", 
     "1000FLOKIUSDT.P", "1000LUNCUSDT.P", "1000PEPEUSDT.P", "1000XECUSDT.P", 
@@ -102,7 +107,51 @@ symbols = [
     "XVGUSDT.P", "XVSUSDT.P", "YFIUSDT.P", "YGGUSDT.P", "ZECUSDT.P", "ZENUSDT.P", "ZILUSDT.P", "ZRXUSDT.P"
 ]
 
-@st.cache_data(ttl=120)
+# Configuration
+exchange = "BYBIT"
+screener = "crypto"
+intervals = {
+    Interval.INTERVAL_1_MINUTE: 0.1,
+    Interval.INTERVAL_5_MINUTES: 0.1,
+    Interval.INTERVAL_15_MINUTES: 0.2,
+    Interval.INTERVAL_30_MINUTES: 0.1,
+    Interval.INTERVAL_1_HOUR: 0.2,
+    Interval.INTERVAL_2_HOURS: 0.1,
+    Interval.INTERVAL_4_HOURS: 0.2,
+    Interval.INTERVAL_1_DAY: 0.1
+}
+
+@st.cache_data(ttl=300)
+def fetch_all_data(symbol, exchange, screener, interval):
+    cache_key = f"{symbol}_{exchange}_{screener}_{interval}"
+    if cache_key in cache:
+        return cache[cache_key]
+    
+    try:
+        handler = TA_Handler(
+            symbol=symbol,
+            exchange=exchange,
+            screener=screener,
+            interval=interval,
+            timeout=None
+        )
+        analysis = handler.get_analysis()
+        cache[cache_key] = analysis
+        return analysis
+    except Exception as e:
+        logging.error(f"Error fetching data for {symbol} on {interval}: {str(e)}")
+        return None
+
+def calculate_momentum_score(data):
+    weights = {'STRONG_BUY': 2, 'BUY': 1, 'NEUTRAL': 0, 'SELL': -1, 'STRONG_SELL': -2}
+    score = 0
+    for interval, analysis in data.items():
+        if analysis:
+            rating = analysis.summary['RECOMMENDATION'].upper()
+            score += weights.get(rating, 0)
+    return score
+
+@st.cache_data(ttl=300)
 def get_historical_data():
     query = """
     SELECT * FROM momentum_scores 
@@ -111,7 +160,7 @@ def get_historical_data():
     """
     return pd.read_sql(query, con=engine, parse_dates=['Timestamp'])
 
-def update_plot(df, selected_symbols):
+def update_plot(df):
     fig, ax = plt.subplots(figsize=(12, 6))
     
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], utc=True)
@@ -143,13 +192,11 @@ def update_plot(df, selected_symbols):
     
     ax.plot([], [], color='blue', label='Average Total Momentum Scores')
     
-    colors = ['yellow', 'purple', 'orange']
-    for i, symbol in enumerate(selected_symbols):
-        symbol_data = df[df['Symbol'] == symbol]
-        if not symbol_data.empty:
-            ax.plot(symbol_data['Timestamp'], symbol_data['Momentum Score'], color=colors[i], label=f'Momentum Score for {symbol}')
-        else:
-            logging.warning(f"No data available for plotting {symbol}")
+    btc_data = df[df['Symbol'] == 'BTCUSDT.P']
+    if not btc_data.empty:
+        ax.plot(btc_data['Timestamp'], btc_data['Momentum Score'], color='yellow', label='Momentum Score for BTCUSDT.P')
+    else:
+        logging.warning("No BTC data available for plotting")
     
     ax.axhline(y=0, color='black', linestyle='--')
     
@@ -178,48 +225,12 @@ def display_top_20_scores(results, historical_df):
     
     return long_df, short_df
 
-def display_filtered_scores(results, historical_df):
-    df = pd.DataFrame(results)
-    df['Previous Score'] = df['Symbol'].map(historical_df.set_index('Symbol')['Momentum Score'].to_dict())
-    df['Change'] = df['Momentum Score'] - df['Previous Score'].fillna(0)
-    df['Momentum Score'] = df['Momentum Score'].round(2)
-    df['Change'] = df['Change'].round(2)
-    
-    positive_filter = (df['Momentum Score'].between(0.1, 0.4)) & (df['Change'].between(1.1, 1.5))
-    negative_filter = (df['Momentum Score'].between(-0.4, -0.1)) & (df['Change'].between(-1.5, -1.1))
-    
-    positive_df = df[positive_filter].sort_values('Change', ascending=False)
-    negative_df = df[negative_filter].sort_values('Change', ascending=True)
-    
-    return positive_df, negative_df
-
 def main():
     st.title('Crypto Market Momentum Score Dashboard')
     
-    # Sidebar for symbol selection
-    st.sidebar.title("Symbol Selection")
-    selected_symbols = st.sidebar.multiselect(
-        "Select up to three symbols to plot (including BTCUSDT.P)",
-        symbols,
-        default=["BTCUSDT.P"],
-        max_selections=3
-    )
-    
-    if "BTCUSDT.P" not in selected_symbols:
-        st.sidebar.warning("BTCUSDT.P is always included in the plot.")
-        selected_symbols = ["BTCUSDT.P"] + selected_symbols[:2]
-    
     plot_placeholder = st.empty()
-    
-    col1, col2, col3 = st.columns(3)
-    
-    long_scores_placeholder = col1.empty()
-    short_scores_placeholder = col1.empty()
-    
-    metrics_placeholder = col2.empty()
-    
-    positive_filter_placeholder = col3.empty()
-    negative_filter_placeholder = col3.empty()
+    long_scores_placeholder = st.empty()
+    short_scores_placeholder = st.empty()
     
     while True:
         try:
@@ -228,49 +239,58 @@ def main():
             df['Timestamp'] = df['Timestamp'].dt.tz_localize('UTC')
             historical_df = df[['Symbol', 'Momentum Score']].copy()
             
-            # Get the latest results
-            latest_results = df[df['Timestamp'] == df['Timestamp'].max()].to_dict('records')
+            results = []
+            error_symbols = []
+            current_datetime = datetime.now(timezone.utc)
+            
+            for symbol in symbols:
+                data = {}
+                for interval, weight in intervals.items():
+                    analysis = fetch_all_data(symbol, exchange, screener, interval)
+                    data[interval] = analysis
+                
+                if all(value is None for value in data.values()):
+                    error_symbols.append(symbol)
+                else:
+                    weighted_score = sum(weight * calculate_momentum_score({interval: data[interval]}) for interval, weight in intervals.items() if data[interval] is not None)
+                    results.append({"Symbol": symbol, "Momentum Score": weighted_score, "Timestamp": current_datetime})
+            
+            new_df = pd.DataFrame(results)
+            new_df['Average Momentum'] = new_df['Momentum Score'].mean()
+            
+            # Save the updated DataFrame to PostgreSQL
+            new_df.to_sql('momentum_scores', con=engine, if_exists='append', index=False)
+            
+            # Combine new data with historical data for plotting
+            df = pd.concat([df, new_df], ignore_index=True)
             
             # Update plot
-            fig = update_plot(df, selected_symbols)
+            fig = update_plot(df)
             plot_placeholder.pyplot(fig)
             
             # Display top 20 scores
-            long_df, short_df = display_top_20_scores(latest_results, historical_df)
-            
-            # Display filtered scores
-            positive_df, negative_df = display_filtered_scores(latest_results, historical_df)
+            long_df, short_df = display_top_20_scores(results, historical_df)
             
             # Update the placeholders with the latest data
             with long_scores_placeholder.container():
                 st.subheader("Top 20 Long Momentum Scores:")
                 st.dataframe(long_df[['Symbol', 'Momentum Score', 'Change']])
+                avg_change_long = long_df['Change'].mean()
+                st.metric("Average Change in Top 20 Long Scores", f"{avg_change_long:.2f}", f"{avg_change_long:.2f}")
             
             with short_scores_placeholder.container():
                 st.subheader("Top 20 Short Momentum Scores:")
                 st.dataframe(short_df[['Symbol', 'Momentum Score', 'Change']])
-            
-            with metrics_placeholder.container():
-                avg_change_long = long_df['Change'].mean()
                 avg_change_short = short_df['Change'].mean()
-                st.metric("Avg Change in Top 20 Long Scores", f"{avg_change_long:.2f}", f"{avg_change_long:.2f}")
-                st.metric("Avg Change in Top 20 Short Scores", f"{avg_change_short:.2f}", f"{avg_change_short:.2f}")
+                st.metric("Average Change in Top 20 Short Scores", f"{avg_change_short:.2f}", f"{avg_change_short:.2f}")
             
-            with positive_filter_placeholder.container():
-                st.subheader("Symbols with Momentum 0.1 to 0.4 & Change 1.1 to 1.5:")
-                st.dataframe(positive_df[['Symbol', 'Momentum Score', 'Change']])
-            
-            with negative_filter_placeholder.container():
-                st.subheader("Symbols with Momentum -0.4 to -0.1 & Change -1.5 to -1.1:")
-                st.dataframe(negative_df[['Symbol', 'Momentum Score', 'Change']])
-            
-            # Sleep for 2 minutes before the next update
-            time.sleep(120)
+            # Sleep for a certain interval before the next update
+            time.sleep(60)  # Adjust as needed
             
         except Exception as e:
             logging.error(f"An error occurred: {str(e)}")
             st.error(f"An error occurred: {str(e)}")
-            time.sleep(600)  # Wait 10 minutes before retrying
+            time.sleep(600)  # Wait before retrying
 
 if __name__ == "__main__":
     main()
